@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SlowQuery — MySQL Log Analyzer</title>
+<style>
+:root {
+  --brand: #2563eb;
+  --brand-dark: #1d4ed8;
+  --brand-light: #eff6ff;
+  --brand-subtle: #dbeafe;
+  --red: #dc2626;
+  --red-light: #fef2f2;
+  --red-border: #fecaca;
+  --amber: #d97706;
+  --amber-light: #fffbeb;
+  --amber-border: #fde68a;
+  --green: #16a34a;
+  --green-light: #f0fdf4;
+  --green-border: #bbf7d0;
+  --blue: #0284c7;
+  --blue-light: #f0f9ff;
+  --blue-border: #bae6fd;
+  --orange: #ea580c;
+  --orange-light: #fff7ed;
+  --orange-border: #fed7aa;
+  --purple: #7c3aed;
+  --purple-light: #f5f3ff;
+  --purple-border: #ddd6fe;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface2: #f1f5f9;
+  --surface3: #e2e8f0;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #94a3b8;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -1px rgba(0,0,0,.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -2px rgba(0,0,0,.04);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+/* ── Layout ── */
+.app-shell { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 220px; flex-shrink: 0; background: var(--surface);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
+}
+.sidebar-logo {
+  padding: 20px 18px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-mark {
+  width: 34px; height: 34px; background: var(--brand); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; color: white; flex-shrink: 0;
+}
+.logo-text { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
+.logo-sub { font-size: 10px; color: var(--text3); }
+
+.sidebar-nav { padding: 12px 10px; flex: 1; overflow-y: auto; }
+.nav-section-label {
+  font-size: 10px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .08em;
+  padding: 6px 8px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: var(--radius);
+  cursor: pointer; color: var(--text2); font-size: 13px;
+  font-weight: 500; transition: all .15s; border: none; background: none;
+  width: 100%; text-align: left; margin-bottom: 2px;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--brand-light); color: var(--brand); font-weight: 600; }
+.nav-item .icon { font-size: 15px; flex-shrink: 0; width: 18px; text-align: center; }
+.nav-badge {
+  margin-left: auto; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 10px;
+  background: var(--red-light); color: var(--red);
+}
+.nav-badge.blue { background: var(--brand-light); color: var(--brand); }
+.nav-badge.amber { background: var(--amber-light); color: var(--amber); }
+
+.sidebar-footer {
+  padding: 14px 18px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text3);
+}
+.sidebar-footer a { color: var(--brand); text-decoration: none; }
+.sidebar-footer a:hover { text-decoration: underline; }
+
+/* ── Main content ── */
+.main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ── Top bar ── */
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 28px; height: 56px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; position: sticky; top: 0; z-index: 50;
+}
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.page-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.topbar-badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 20px;
+  background: var(--green-light); color: var(--green); border: 1px solid var(--green-border);
+  font-weight: 600;
+}
+.topbar-badge.offline { background: var(--brand-light); color: var(--brand); border-color: var(--brand-subtle); }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.topbar-btn {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px;
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);
+  color: var(--text2); font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all .15s; font-family: Arial, sans-serif;
+}
+.topbar-btn:hover { border-color: var(--border2); background: var(--surface2); color: var(--text); }
+.topbar-btn.primary { background: var(--brand); border-color: var(--brand); color: white; }
+.topbar-btn.primary:hover { background: var(--brand-dark); }
+
+/* ── Page sections (tab panels) ── */
+.page { padding: 28px; display: none; }
+.page.active { display: block; }
+
+/* ── Upload page ── */
+.upload-page { max-width: 700px; margin: 0 auto; padding-top: 40px; }
+.upload-hero { text-align: center; margin-bottom: 36px; }
+.upload-hero h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+.upload-hero p { color: var(--text2); font-size: 15px; }
+
+.dropzone {
+  border: 2px dashed var(--border2); border-radius: var(--radius-lg);
+  padding: 48px 32px; text-align: center; cursor: pointer;
+  transition: all .2s; background: var(--surface); margin-bottom: 16px;
+}
+.dropzone:hover, .dropzone.drag-over { border-color: var(--brand); background: var(--brand-light); }
+.dropzone input { display: none; }
+.dropzone-icon { font-size: 40px; margin-bottom: 14px; }
+.dropzone h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.dropzone p { color: var(--text2); font-size: 13px; margin-bottom: 18px; }
+.dropzone-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--brand); color: white; border: none;
+  padding: 9px 22px; border-radius: var(--radius); font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: Arial, sans-serif;
+}
+.dropzone-btn:hover { background: var(--brand-dark); }
+.dropzone-hint { font-size: 11px; color: var(--text3); margin-top: 10px; }
+
+.divider { display: flex; align-items: center; gap: 12px; color: var(--text3); font-size: 12px; margin: 16px 0; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.paste-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.paste-header {
+  padding: 10px 16px; background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text3); font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
+}
+.paste-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); flex-shrink: 0; }
+textarea {
+  width: 100%; background: transparent; border: none; outline: none;
+  color: var(--text2); font-family: 'Courier New', monospace; font-size: 12px;
+  padding: 14px 16px; resize: vertical; min-height: 120px; line-height: 1.6;
+}
+textarea::placeholder { color: var(--text3); }
+.analyze-btn {
+  width: 100%; padding: 13px; background: var(--brand); border: none;
+  border-radius: var(--radius); color: white; font-size: 15px; font-weight: 700;
+  cursor: pointer; margin-top: 14px; transition: all .15s; font-family: Arial, sans-serif;
+}
+.analyze-btn:hover { background: var(--brand-dark); }
+
+/* ── Loading ── */
+.loading-screen {
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 60vh; gap: 20px;
+}
+.loading-screen.show { display: flex; }
+.loading-spinner {
+  width: 44px; height: 44px; border: 3px solid var(--border);
+  border-top-color: var(--brand); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 15px; font-weight: 600; color: var(--text); }
+.loading-sub { font-size: 13px; color: var(--text2); margin-top: -10px; }
+.progress-wrap { width: 320px; }
+.progress-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--brand); border-radius: 3px; transition: width .3s ease; width: 0; }
+.progress-text { font-size: 12px; color: var(--text3); margin-top: 6px; text-align: center; }
+
+/* ── Stat cards ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+@media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 4px;
+}
+.stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.stat-icon { font-size: 20px; }
+.stat-trend {
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+}
+.stat-trend.up { background: var(--red-light); color: var(--red); }
+.stat-trend.neutral { background: var(--surface2); color: var(--text3); }
+.stat-val { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -.5px; }
+.stat-val.red { color: var(--red); }
+.stat-val.amber { color: var(--amber); }
+.stat-val.blue { color: var(--blue); }
+.stat-val.green { color: var(--green); }
+.stat-label { font-size: 12px; color: var(--text2); font-weight: 500; }
+.stat-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* ── Section headers ── */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 12px;
+}
+.section-title { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 7px; }
+.section-title .icon { font-size: 16px; }
+.section-actions { display: flex; align-items: center; gap: 8px; }
+
+/* ── Card container ── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow);
+}
+.card-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-body { padding: 20px; }
+
+/* ── Threshold bar ── */
+.threshold-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  box-shadow: var(--shadow);
+}
+.threshold-label { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.threshold-input {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius); color: var(--text); font-size: 13px;
+  padding: 7px 12px; width: 130px; outline: none; font-family: 'Courier New', monospace;
+  transition: border-color .15s;
+}
+.threshold-input:focus { border-color: var(--brand); }
+.threshold-input::placeholder { color: var(--text3); }
+.threshold-unit { font-size: 13px; color: var(--text2); }
+.threshold-hint { font-size: 12px; color: var(--text3); }
+.thr-badge {
+  font-size: 12px; color: var(--brand); background: var(--brand-light);
+  border: 1px solid var(--brand-subtle); border-radius: 20px; padding: 3px 10px;
+  font-weight: 600; display: none;
+}
+.thr-clear {
+  font-size: 12px; color: var(--text3); background: none; border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; display: none;
+  font-family: Arial, sans-serif;
+}
+.thr-clear:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Filter bar ── */
+.filter-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+.filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filter-row + .filter-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.filter-label { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; flex-shrink: 0; min-width: 64px; }
+.filter-chip {
+  padding: 5px 13px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; color: var(--text2); font-size: 12px;
+  font-weight: 500; cursor: pointer; transition: all .15s; font-family: Arial, sans-serif;
+}
+.filter-chip:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+.filter-chip.active { background: var(--brand); border-color: var(--brand); color: white; }
+.filter-chip.active-red { background: var(--red); border-color: var(--red); color: white; }
+.filter-chip.active-amber { background: var(--amber); border-color: var(--amber); color: white; }
+.filter-chip.active-green { background: var(--green); border-color: var(--green); color: white; }
+.filter-chip.active-orange { background: var(--orange); border-color: var(--orange); color: white; }
+.filter-chip.active-db { background: #0891b2; border-color: #0891b2; color: white; }
+
+/* ── Search + sort bar ── */
+.query-toolbar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.search-input {
+  flex: 1; min-width: 200px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 13px;
+  padding: 8px 14px; outline: none; font-family: Arial, sans-serif;
+}
+.search-input:focus { border-color: var(--brand); }
+.search-input::placeholder { color: var(--text3); }
+.sort-group { display: flex; align-items: center; gap: 6px; }
+.sort-label { font-size: 12px; color: var(--text2); }
+.sort-btn {
+  padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: transparent; color: var(--text2); font-size: 12px; cursor: pointer;
+  transition: all .15s; font-family: Arial, sans-serif;
+}
+.sort-btn:hover { border-color: var(--border2); color: var(--text); }
+.sort-btn.active { background: var(--brand-light); border-color: var(--brand); color: var(--brand); font-weight: 600; }
+
+/* ── Query cards ── */
+.query-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); margin-bottom: 10px;
+  box-shadow: var(--shadow); overflow: hidden; transition: box-shadow .15s;
+}
+.query-card:hover { box-shadow: var(--shadow-md); }
+.query-card.critical { border-left: 4px solid var(--red); }
+.query-card.moderate { border-left: 4px solid var(--amber); }
+.query-card.low { border-left: 4px solid var(--green); }
+.query-card.info { border-left: 4px solid var(--blue); }
+
+.card-top {
+  padding: 14px 18px; display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 12px; cursor: pointer; user-select: none;
+}
+.card-top-left { flex: 1; min-width: 0; }
+.card-title { font-size: 14px; font-weight: 600; margin-bottom: 7px; color: var(--text); }
+.card-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.meta-chip {
+  font-size: 11px; color: var(--text2); display: inline-flex; align-items: center;
+  gap: 3px; background: var(--surface2); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 10px;
+}
+.meta-chip.red { background: var(--red-light); color: var(--red); border-color: var(--red-border); font-weight: 600; }
+.meta-chip.amber { background: var(--amber-light); color: var(--amber); border-color: var(--amber-border); font-weight: 600; }
+
+.sev-badge {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  flex-shrink: 0; white-space: nowrap;
+}
+.sev-badge.critical { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+.sev-badge.moderate { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-border); }
+.sev-badge.low { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
+.sev-badge.info { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-border); }
+
+.log-type-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.log-type-badge.slow { background: var(--purple-light); color: var(--purple); border: 1px solid var(--purple-border); }
+.log-type-badge.no_index { background: var(--orange-light); color: var(--orange); border: 1px solid var(--orange-border); }
+.log-type-badge.both { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+
+.toggle-chevron { color: var(--text3); font-size: 16px; transition: transform .2s; flex-shrink: 0; margin-top: 2px; }
+.card-body-expand { display: none; border-top: 1px solid var(--border); }
+.card-body-expand.open { display: block; }
+
+.body-section { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.body-section:last-child { border-bottom: none; }
+.body-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+.sql-block {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px;
+  font-family: 'Courier New', monospace; font-size: 12px;
+  color: var(--text2); line-height: 1.7; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+}
+.sql-keyword { color: var(--brand); font-weight: 700; }
+.sql-table { color: var(--green); }
+.sql-value { color: var(--amber); }
+
+.fix-list { background: var(--green-light); border: 1px solid var(--green-border); border-radius: var(--radius); padding: 10px 14px; }
+.fix-item { font-size: 13px; color: var(--text2); padding: 3px 0; display: flex; gap: 8px; }
+.fix-item::before { content: '→'; color: var(--green); flex-shrink: 0; font-weight: 700; }
+.alter-block {
+  background: #1e293b; border-radius: var(--radius); padding: 10px 14px;
+  font-family: 'Courier New', monospace; font-size: 12px; color: #a5f3fc;
+  line-height: 1.8; overflow-x: auto; white-space: pre;
+}
+
+/* ── Index Candidates ── */
+.ic-summary-row {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.ic-sum-chip {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow);
+  flex: 1; min-width: 100px;
+}
+.ic-sum-chip .v { font-size: 22px; font-weight: 700; color: var(--text); }
+.ic-sum-chip .l { font-size: 11px; color: var(--text3); }
+
+.ic-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden;
+  box-shadow: var(--shadow); transition: box-shadow .15s;
+}
+.ic-card:hover { box-shadow: var(--shadow-md); }
+.ic-card.p1 { border-left: 4px solid var(--red); }
+.ic-card.p2 { border-left: 4px solid var(--amber); }
+.ic-card.p3 { border-left: 4px solid var(--blue); }
+
+.ic-top { padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none; }
+.ic-prio {
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+  flex-shrink: 0; margin-top: 2px;
+}
+.ic-prio.p1 { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+.ic-prio.p2 { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-border); }
+.ic-prio.p3 { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-border); }
+
+.ic-main { flex: 1; min-width: 0; }
+.ic-title-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 6px; }
+.ic-table { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700; color: var(--green); }
+.ic-cols  { font-family: 'Courier New', monospace; font-size: 12px; color: var(--brand); }
+.ic-db    { font-size: 11px; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); padding: 1px 7px; border-radius: 10px; }
+
+.ic-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ic-tag {
+  font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 10px; cursor: help;
+}
+.ic-tag.freq  { background: var(--orange-light); color: var(--orange); border: 1px solid var(--orange-border); }
+.ic-tag.slow  { background: var(--purple-light); color: var(--purple); border: 1px solid var(--purple-border); }
+.ic-tag.scan  { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+
+.ic-stats { display: flex; flex-wrap: wrap; gap: 12px; }
+.ic-s { font-size: 12px; color: var(--text2); }
+.ic-s b { font-weight: 700; color: var(--text); }
+.ic-s b.warn { color: var(--amber); }
+.ic-s b.danger { color: var(--red); }
+
+.ic-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.btn-copy {
+  padding: 5px 14px; border-radius: var(--radius); background: var(--surface);
+  border: 1px solid var(--border2); color: var(--text2); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all .15s; white-space: nowrap; font-family: Arial, sans-serif;
+}
+.btn-copy:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+.btn-copy.copied { border-color: var(--green); color: var(--green); background: var(--green-light); }
+
+.ic-body { display: none; border-top: 1px solid var(--border); padding: 16px 18px; }
+.ic-body.open { display: block; }
+.ic-alter {
+  background: #1e293b; border-radius: var(--radius); padding: 10px 14px;
+  font-family: 'Courier New', monospace; font-size: 12px; color: #a5f3fc;
+  line-height: 1.8; overflow-x: auto; white-space: pre; margin-bottom: 12px;
+}
+.ic-why { font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 12px; }
+.ic-score-bars { margin-bottom: 12px; }
+.ic-score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.ic-score-lbl { font-size: 11px; color: var(--text2); width: 130px; flex-shrink: 0; }
+.ic-score-track { flex: 1; height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.ic-score-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
+.ic-score-pct { font-size: 10px; color: var(--text3); width: 28px; text-align: right; flex-shrink: 0; }
+.ic-sample-lbl { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.ic-sample {
+  background: var(--surface2); border-left: 3px solid var(--border2);
+  border-radius: 0 4px 4px 0; padding: 7px 10px;
+  font-family: 'Courier New', monospace; font-size: 11px; color: var(--text2);
+  white-space: pre-wrap; word-break: break-all; margin-bottom: 4px; line-height: 1.6;
+}
+
+/* ── HF cards ── */
+.hf-card {
+  background: var(--surface); border: 1px solid var(--orange-border);
+  border-left: 4px solid var(--orange); border-radius: var(--radius-lg);
+  margin-bottom: 10px; overflow: hidden; box-shadow: var(--shadow);
+}
+.hf-top { padding: 13px 18px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none; }
+.hf-rank { font-size: 16px; font-weight: 700; color: var(--orange); flex-shrink: 0; width: 30px; text-align: center; margin-top: 2px; }
+.hf-main { flex: 1; min-width: 0; }
+.hf-title { font-size: 13px; color: var(--text2); font-family: 'Courier New', monospace; margin-bottom: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+.hf-s { font-size: 12px; color: var(--text2); }
+.hf-s b { font-weight: 700; color: var(--text); }
+.hf-s b.hot { color: var(--orange); }
+.hf-s b.danger { color: var(--red); }
+.hf-impact-row { display: flex; align-items: center; gap: 8px; }
+.hf-impact-lbl { font-size: 11px; color: var(--text3); width: 50px; }
+.hf-impact-track { flex: 1; height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.hf-impact-fill { height: 100%; background: linear-gradient(90deg, var(--orange), var(--red)); border-radius: 2px; transition: width .5s; }
+.hf-impact-val { font-size: 11px; color: var(--orange); font-weight: 700; width: 40px; text-align: right; }
+.hf-body { display: none; border-top: 1px solid var(--border); padding: 14px 18px; }
+.hf-body.open { display: block; }
+.hf-why { background: var(--orange-light); border: 1px solid var(--orange-border); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: #9a3412; line-height: 1.7; margin-bottom: 10px; }
+.hf-why .hl { font-weight: 700; color: var(--orange); }
+
+/* ── Chart ── */
+.chart-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.chart-bar-label { font-size: 12px; color: var(--text2); width: 200px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Courier New', monospace; }
+.chart-bar-track { flex: 1; background: var(--surface2); border-radius: 3px; height: 8px; overflow: hidden; }
+.chart-bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+.chart-bar-val { font-size: 12px; color: var(--text2); width: 60px; text-align: right; flex-shrink: 0; font-weight: 600; }
+
+/* ── Breakdown bar ── */
+.breakdown-bar {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 18px; margin-bottom: 20px; box-shadow: var(--shadow);
+}
+.breakdown-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; }
+.breakdown-item { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+.breakdown-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.breakdown-track { height: 8px; background: var(--surface3); border-radius: 4px; overflow: hidden; display: flex; }
+.breakdown-seg { height: 100%; transition: width .5s ease; }
+
+/* ── Report modal ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(15,23,42,.5); backdrop-filter: blur(3px);
+  align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  width: 100%; max-width: 680px; box-shadow: var(--shadow-lg);
+  animation: modalSlide .2s ease; margin: auto;
+}
+@keyframes modalSlide { from { opacity:0; transform: translateY(-12px); } to { opacity:1; transform: translateY(0); } }
+.modal-header {
+  padding: 18px 22px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-size: 16px; font-weight: 700; }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer; color: var(--text2); font-size: 14px;
+  display: flex; align-items: center; justify-content: center; font-family: Arial, sans-serif;
+}
+.modal-close:hover { border-color: var(--red); color: var(--red); }
+.modal-body { padding: 20px 22px; max-height: 70vh; overflow-y: auto; }
+.modal-footer {
+  padding: 14px 22px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.modal-section-label {
+  font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase;
+  letter-spacing: .07em; margin-bottom: 8px; margin-top: 16px;
+}
+.modal-section-label:first-child { margin-top: 0; }
+
+.report-option {
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 12px 16px; cursor: pointer; transition: all .15s; margin-bottom: 8px;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.report-option:hover { border-color: var(--border2); background: var(--surface2); }
+.report-option.selected { border-color: var(--brand); background: var(--brand-light); }
+.report-option-icon { font-size: 20px; flex-shrink: 0; }
+.report-option-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.report-option-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+.toggle-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.toggle-pill {
+  display: flex; align-items: center; gap: 6px; padding: 5px 13px;
+  border: 1px solid var(--border); border-radius: 20px; cursor: pointer;
+  font-size: 12px; color: var(--text2); transition: all .15s; user-select: none;
+}
+.toggle-pill:hover { border-color: var(--border2); }
+.toggle-pill.on { border-color: var(--brand); color: var(--brand); background: var(--brand-light); font-weight: 600; }
+.toggle-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border2); flex-shrink: 0; }
+.toggle-pill.on .dot { background: var(--brand); }
+
+.match-count { font-size: 12px; color: var(--text3); margin-left: auto; }
+
+/* ── Index Intelligence (old index recs) ── */
+.idx-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; box-shadow: var(--shadow);
+}
+.idx-card.p1 { border-left: 4px solid var(--red); }
+.idx-card.p2 { border-left: 4px solid var(--amber); }
+.idx-card.p3 { border-left: 4px solid var(--blue); }
+.idx-top { padding: 13px 18px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none; }
+.idx-prio { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; flex-shrink: 0; margin-top: 1px; }
+.idx-prio.p1 { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+.idx-prio.p2 { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-border); }
+.idx-prio.p3 { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-border); }
+.idx-main { flex: 1; min-width: 0; }
+.idx-title-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 5px; }
+.idx-tbl { font-family: 'Courier New', monospace; font-size: 13px; font-weight: 700; color: var(--green); }
+.idx-col { font-family: 'Courier New', monospace; font-size: 12px; color: var(--brand); }
+.idx-db  { font-size: 11px; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); padding: 1px 7px; border-radius: 10px; }
+.idx-stats { display: flex; flex-wrap: wrap; gap: 12px; }
+.idx-s { font-size: 12px; color: var(--text2); }
+.idx-s b { font-weight: 700; color: var(--text); }
+.idx-tag { font-size: 10px; padding: 1px 7px; border-radius: 8px; margin-left: 4px; }
+.idx-tag.cache { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-border); }
+.idx-body { display: none; border-top: 1px solid var(--border); padding: 14px 18px; }
+.idx-body.open { display: block; }
+
+/* ── Pagination ── */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 20px; flex-wrap: wrap; }
+.page-btn {
+  padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text2); font-size: 13px; cursor: pointer;
+  transition: all .15s; font-family: Arial, sans-serif;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+.page-btn.active { background: var(--brand); border-color: var(--brand); color: white; font-weight: 700; }
+.page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.page-info { font-size: 12px; color: var(--text3); padding: 0 4px; }
+
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 48px 24px; }
+.empty-icon { font-size: 36px; margin-bottom: 12px; }
+.empty-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.empty-sub { font-size: 13px; color: var(--text2); }
+
+/* ── Tooltip ── */
+[data-tip] { position: relative; cursor: default; }
+[data-tip]::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px);
+  left: 50%; transform: translateX(-50%) translateY(4px);
+  background: #0f172a; color: #f1f5f9; font-size: 11px; font-weight: 400;
+  line-height: 1.5; padding: 6px 10px; border-radius: 6px; white-space: pre-line;
+  max-width: 220px; min-width: 100px; text-align: center;
+  pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s;
+  z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
+[data-tip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Utilities ── */
+.fade-in { animation: fadeIn .25s ease forwards; }
+@keyframes fadeIn { from { opacity:0; transform: translateY(5px); } to { opacity:1; transform: translateY(0); } }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.text-muted { color: var(--text2); }
+.text-faint { color: var(--text3); }
+.fw-600 { font-weight: 600; }
+.fw-700 { font-weight: 700; }
+.flex { display: flex; align-items: center; }
+.gap-6 { gap: 6px; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.mb-4 { margin-bottom: 4px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px;
+  border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text2); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .15s; font-family: Arial, sans-serif;
+}
+.btn:hover { border-color: var(--border2); background: var(--surface2); color: var(--text); }
+.btn-primary { background: var(--brand); border-color: var(--brand); color: white; }
+.btn-primary:hover { background: var(--brand-dark); }
+.btn-green { background: var(--green); border-color: var(--green); color: white; }
+.btn-green:hover { opacity: .9; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">🔍</div>
+      <div>
+        <div class="logo-text">SlowQuery</div>
+        <div class="logo-sub">MySQL Analyzer</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Analysis</div>
+      <button class="nav-item active" id="nav-upload" onclick="navTo('upload')">
+        <span class="icon">📂</span> Upload Log
+      </button>
+      <button class="nav-item" id="nav-overview" onclick="navTo('overview')" style="display:none">
+        <span class="icon">📊</span> Overview
+        <span class="nav-badge blue" id="nav-total-badge"></span>
+      </button>
+      <button class="nav-item" id="nav-candidates" onclick="navTo('candidates')" style="display:none">
+        <span class="icon">🎯</span> Index Candidates
+        <span class="nav-badge" id="nav-crit-badge"></span>
+      </button>
+      <button class="nav-item" id="nav-highfreq" onclick="navTo('highfreq')" style="display:none">
+        <span class="icon">⚡</span> High Frequency
+        <span class="nav-badge amber" id="nav-hf-badge"></span>
+      </button>
+      <button class="nav-item" id="nav-queries" onclick="navTo('queries')" style="display:none">
+        <span class="icon">🔎</span> All Queries
+      </button>
+
+      <div class="nav-section-label" style="margin-top:8px">Export</div>
+      <button class="nav-item" onclick="openReportModal()" id="nav-report" style="display:none">
+        <span class="icon">📋</span> Generate Report
+      </button>
+      <button class="nav-item" onclick="exportCSV()" id="nav-csv" style="display:none">
+        <span class="icon">📄</span> Export CSV
+      </button>
+
+      <div class="nav-section-label" style="margin-top:8px">Actions</div>
+      <button class="nav-item" onclick="resetApp()" id="nav-reset" style="display:none">
+        <span class="icon">↩</span> New Analysis
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      Built by <a href="https://helithasri.dev" target="_blank">Helitha Sri</a><br>
+      MySQL 5.7 / 8.x &nbsp;·&nbsp; SQLite-powered
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="page-title" id="pageTitle">Upload Log File</span>
+        <span class="topbar-badge offline" id="topbarBadge">No file loaded</span>
+      </div>
+      <div class="topbar-right" id="topbarActions" style="display:none">
+        <div class="threshold-bar" style="margin:0;padding:8px 14px;border-radius:var(--radius);box-shadow:none;display:flex;align-items:center;gap:10px">
+          <span class="threshold-label" style="font-size:12px" data-tip="Filter queries above this time.&#10;Your log threshold is 500ms.">⏱ Min time:</span>
+          <input type="number" class="threshold-input" id="thr_time" placeholder="ms" min="0" oninput="onThresholdInput(this.value)" style="width:90px;padding:5px 9px">
+          <span class="thr-badge" id="thrActiveBadge"></span>
+          <button class="thr-clear" id="thrResetBtn" onclick="resetThresholds()">✕ Clear</button>
+        </div>
+        <button class="topbar-btn primary" onclick="openReportModal()">📋 Report</button>
+        <button class="topbar-btn" onclick="exportCSV()">📄 CSV</button>
+        <button class="topbar-btn" onclick="resetApp()">↩ New</button>
+      </div>
+    </header>
+
+    <!-- Upload Page -->
+    <div class="page active" id="page-upload">
+      <div id="uploadSection">
+        <div class="upload-page">
+          <div class="upload-hero">
+            <div style="font-size:52px;margin-bottom:14px">🔍</div>
+            <h1>MySQL Slow Query Analyzer</h1>
+            <p>Upload your slow query log and get instant, actionable index recommendations.<br>All processing happens in your browser — your data never leaves your machine.</p>
+          </div>
+
+          <div class="dropzone" id="dropZone">
+            <input type="file" id="fileInput" accept=".log,.txt">
+            <div class="dropzone-icon">📂</div>
+            <h3>Drop your slow query log here</h3>
+            <p>Drag &amp; drop a .log or .txt file, or click to browse.<br>Handles large files with chunked parsing — no browser freeze.</p>
+            <button class="dropzone-btn" onclick="document.getElementById('fileInput').click()">
+              Choose file
+            </button>
+            <div class="dropzone-hint">Accepts: .log &nbsp;·&nbsp; .txt &nbsp;·&nbsp; any text file &nbsp;·&nbsp; MySQL 5.7 / 8.x format</div>
+          </div>
+
+          <div class="divider">or paste log content directly</div>
+
+          <div class="paste-box">
+            <div class="paste-header">
+              <div class="paste-dot"></div>
+              slow-query.log
+            </div>
+            <textarea id="pasteInput" placeholder="Paste your MySQL slow query log content here...
+# Time: 2026-03-16T07:16:01.476342Z
+# User@Host: app_user[app_user] @ [10.1.5.1]  Id: 24
+# Query_time: 0.016111  Lock_time: 0.000002 Rows_sent: 1  Rows_examined: 383
+SELECT count(*) FROM orders WHERE status = 'PENDING';"></textarea>
+          </div>
+          <button class="analyze-btn" onclick="analyzeFromPaste()">Analyze Log →</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div class="loading-screen" id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingLabel">Initializing SQLite...</div>
+        <div class="loading-sub" id="loadingSub"></div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+          <div class="progress-text" id="progressStats"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overview Page -->
+    <div class="page" id="page-overview">
+      <div class="stats-grid" id="statsGrid"></div>
+      <div id="breakdownSection"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px" id="overviewCharts">
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title"><span class="icon">📈</span> Top 10 Slowest Queries</span>
+          </div>
+          <div class="card-body" id="barChart"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title"><span class="icon">📊</span> Severity Breakdown</span>
+          </div>
+          <div class="card-body" id="severityBreakdown"></div>
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <div class="card-header">
+          <span class="section-title"><span class="icon">🗄️</span> Database Summary</span>
+        </div>
+        <div class="card-body" id="dbSummary"></div>
+      </div>
+    </div>
+
+    <!-- Index Candidates Page -->
+    <div class="page" id="page-candidates">
+      <div class="ic-summary-row" id="icSummaryRow"></div>
+      <div id="icSection"></div>
+    </div>
+
+    <!-- High Frequency Page -->
+    <div class="page" id="page-highfreq">
+      <div class="card mb-20" style="border-left:4px solid var(--orange);border-radius:var(--radius-lg)">
+        <div class="card-body" style="padding:16px 20px">
+          <div style="font-size:14px;font-weight:600;color:var(--orange);margin-bottom:6px">⚡ What is High Frequency?</div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.7">
+            These queries were logged because they ran <strong>without using an index</strong> — not because they were individually slow.
+            At high frequency, the cumulative DB load becomes significant.
+            <strong>Impact = executions × avg time.</strong>
+            A 20ms query running 22,000 times = <strong>440 seconds</strong> of wasted DB time.
+          </div>
+        </div>
+      </div>
+      <div id="hfSummaryRow" class="ic-summary-row"></div>
+      <div id="hfSection"></div>
+    </div>
+
+    <!-- All Queries Page -->
+    <div class="page" id="page-queries">
+      <div class="filter-bar" id="filterBar">
+        <div class="filter-row" id="severityFilters"></div>
+        <div class="filter-row" id="logTypeFilters" style="display:none"></div>
+        <div class="filter-row" id="dbFilters" style="display:none"></div>
+      </div>
+      <div class="query-toolbar">
+        <input type="search" class="search-input" id="sqlSearch" placeholder="🔍 Search SQL, table names..." oninput="onSearch(this.value)">
+        <div class="sort-group">
+          <span class="sort-label">Sort by:</span>
+          <button class="sort-btn active" data-sort="severity" onclick="setSort('severity',this)" data-tip="Sort by Critical → Moderate → Low">Severity</button>
+          <button class="sort-btn" data-sort="time" onclick="setSort('time',this)" data-tip="Slowest queries first">Query time</button>
+          <button class="sort-btn" data-sort="rows" onclick="setSort('rows',this)" data-tip="Most rows scanned first">Rows examined</button>
+        </div>
+      </div>
+      <div id="queryCards"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /app-shell -->
+
+<!-- Report Modal -->
+<div class="modal-overlay" id="reportModal" onclick="if(event.target===this)closeReportModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📋 Generate Report</div>
+      <button class="modal-close" onclick="closeReportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section-label">Report type</div>
+      <div class="report-option selected" id="opt-devops" onclick="selectReportType('devops')">
+        <div class="report-option-icon">🛠</div>
+        <div>
+          <div class="report-option-title">DevOps / DBA Indexing Report</div>
+          <div class="report-option-desc">Priority-ordered index recommendations with ALTER TABLE SQL, hit counts, and cumulative slow time. Perfect for a Jira ticket or Slack.</div>
+        </div>
+      </div>
+      <div class="report-option" id="opt-full" onclick="selectReportType('full')">
+        <div class="report-option-icon">📊</div>
+        <div>
+          <div class="report-option-title">Full Analysis Report</div>
+          <div class="report-option-desc">All slow queries with severity, metrics, log reason, and fix suggestions. Useful for engineering team reviews.</div>
+        </div>
+      </div>
+      <div class="report-option" id="opt-csv" onclick="selectReportType('csv')">
+        <div class="report-option-icon">📄</div>
+        <div>
+          <div class="report-option-title">CSV Export</div>
+          <div class="report-option-desc">Raw data — all queries with severity, time, rows examined, DB, SQL text.</div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);margin:16px 0"></div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">🎯 Filter report data</div>
+
+      <div class="modal-section-label">Database</div>
+      <div class="toggle-pills" id="reportDbFilter"></div>
+
+      <div class="modal-section-label">Severity</div>
+      <div class="toggle-pills" id="reportSevFilter"></div>
+
+      <div id="reportLogTypeGroup">
+        <div class="modal-section-label">Log reason</div>
+        <div class="toggle-pills" id="reportLogTypeFilter"></div>
+      </div>
+
+      <div id="reportHFGroup">
+        <div class="modal-section-label">High frequency</div>
+        <div class="toggle-pills" id="reportHFFilter"></div>
+      </div>
+
+      <div style="height:1px;background:var(--border);margin:16px 0"></div>
+      <div class="modal-section-label">Include sections</div>
+      <div class="toggle-pills" id="reportIncludes">
+        <label class="toggle-pill on" data-key="summary" onclick="toggleInclude(this,'summary')"><span class="dot"></span>Summary metrics</label>
+        <label class="toggle-pill on" data-key="indexes" onclick="toggleInclude(this,'indexes')"><span class="dot"></span>Index recommendations</label>
+        <label class="toggle-pill on" data-key="hf" onclick="toggleInclude(this,'hf')"><span class="dot"></span>High frequency panel</label>
+        <label class="toggle-pill on" data-key="queries" onclick="toggleInclude(this,'queries')"><span class="dot"></span>Query list</label>
+        <label class="toggle-pill" data-key="sql" onclick="toggleInclude(this,'sql')"><span class="dot"></span>Full SQL text</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="reportMatchCount" class="match-count"></span>
+      <button class="btn btn-primary" onclick="generateAndDownloadReport()">⬇ Download Report</button>
+      <button class="btn btn-green" onclick="openReportInTab()">↗ Open in tab</button>
+      <button class="btn" onclick="closeReportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── SQL escape helper ────────────────────────────────────────────────────────
+function sqlEsc(s) { return String(s||'').replace(/'/g, "''"); }
+function escHtml(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function safeJSON(str, fallback) { try { return JSON.parse(str); } catch { return fallback; } }
+function highlightSQL(sql) {
+  const kw = ['SELECT','FROM','WHERE','JOIN','INNER','LEFT','RIGHT','ON','AND','OR','NOT','IN','COUNT','AS','USE','SET','INSERT','UPDATE','DELETE','GROUP BY','ORDER BY','HAVING','LIMIT','DISTINCT','UNION','VALUES','INTO'];
+  let h = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  kw.forEach(k => { h = h.replace(new RegExp('\\b' + k + '\\b', 'gi'), `<span class="sql-keyword">${k}</span>`); });
+  h = h.replace(/`(\w+)`/g, '<span class="sql-table">`$1`</span>');
+  h = h.replace(/'([^']*)'/g, "<span class=\"sql-value\">'$1'</span>");
+  return h;
+}
+
+// ── sigBar standalone ────────────────────────────────────────────────────────
+function sigBar(val, label, tip, color) {
+  const pct = (val * 100).toFixed(1);
+  return '<div class="ic-score-row">'
+    + '<div class="ic-score-lbl" data-tip="' + tip + '">' + label + '</div>'
+    + '<div class="ic-score-track"><div class="ic-score-fill" style="width:' + pct + '%;background:' + color + '"></div></div>'
+    + '<div class="ic-score-pct">' + Math.round(val*100) + '%</div>'
+    + '</div>';
+}
+
+// ── SQLite ───────────────────────────────────────────────────────────────────
+let SQL = null;
+let db = null;
+
+async function initSQLite() {
+  if (SQL) return SQL;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js';
+    script.onload = resolve; script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+  return SQL;
+}
+
+function createDB() {
+  if (db) { db.close(); db = null; }
+  db = new SQL.Database();
+  db.run(`CREATE TABLE queries (
+    id INTEGER PRIMARY KEY, ts TEXT, user TEXT, host TEXT,
+    query_time REAL, lock_time REAL, rows_sent INTEGER, rows_examined INTEGER,
+    database_name TEXT, sql_text TEXT, severity TEXT, category TEXT, title TEXT,
+    issues TEXT, fixes TEXT, indexes TEXT,
+    is_duplicate INTEGER DEFAULT 0, duplicate_count INTEGER DEFAULT 1,
+    index_key TEXT, main_table TEXT, where_cols TEXT,
+    log_type TEXT DEFAULT 'slow', no_index_used INTEGER DEFAULT 0, sql_sig TEXT DEFAULT ''
+  )`);
+  ['idx_severity ON queries(severity)', 'idx_qtime ON queries(query_time DESC)',
+   'idx_rows ON queries(rows_examined DESC)', 'idx_db ON queries(database_name)',
+   'idx_dup ON queries(is_duplicate)', 'idx_logtype ON queries(log_type)',
+   'idx_sig ON queries(sql_sig)'].forEach(i => db.run('CREATE INDEX ' + i));
+  return db;
+}
+
+// ── Parser ───────────────────────────────────────────────────────────────────
+function parseSlowLogChunked(text, onProgress) {
+  const queries = [];
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const total = lines.length;
+  let i = 0, currentDb = '';
+  function processChunk() {
+    const chunkEnd = Math.min(i + 5000, total);
+    while (i < chunkEnd) {
+      const line = lines[i];
+      if (/^use\s+\w+\s*;$/i.test(line.trim())) {
+        const m = line.match(/use\s+(\w+)/i); if (m) currentDb = m[1]; i++; continue;
+      }
+      if (!line.startsWith('# User@Host:')) { i++; continue; }
+      const userLine = line;
+      let timeLine = '';
+      for (let back = 1; back <= 3; back++) { const p = lines[i-back]||''; if (p.startsWith('# Time:')) { timeLine = p; break; } }
+      i++;
+      const headerLines = [];
+      while (i < lines.length && lines[i].startsWith('#')) { headerLines.push(lines[i]); i++; }
+      const statsLine = headerLines.find(l => l.includes('Query_time:')) || '';
+      if (!statsLine) continue;
+      const allHeaders = headerLines.join(' ');
+      const timeMatch = timeLine.match(/# Time:\s*(.+)/);
+      const userMatch = userLine.match(/# User@Host:\s*(\S+)\[(\S+)\]\s*@\s*\[?([\d\.]*)/);
+      const queryTimeMatch = statsLine.match(/Query_time:\s*([\d\.]+)/);
+      const lockTimeMatch  = statsLine.match(/Lock_time:\s*([\d\.]+)/);
+      const rowsSentMatch  = statsLine.match(/Rows_sent:\s*(\d+)/);
+      const rowsExaminedMatch = statsLine.match(/Rows_examined:\s*(\d+)/);
+      const noIndexUsed     = /No_index_used\s*:\s*(?:1|Yes)/i.test(allHeaders);
+      const noGoodIndexUsed = /No_good_index_used\s*:\s*(?:1|Yes)/i.test(allHeaders);
+      const sqlLines = []; let blockDb = currentDb;
+      while (i < lines.length) {
+        const l = lines[i];
+        if (l.startsWith('# User@Host:')) break;
+        if (l.startsWith('# Time:') && i+1 < lines.length && lines[i+1] && lines[i+1].startsWith('# User@Host:')) break;
+        if (l.startsWith('#')) { i++; continue; }
+        if (l.startsWith('/usr/') || l.startsWith('Tcp port') || l.startsWith('Time ')) { i++; continue; }
+        if (/^use\s+\w+\s*;$/i.test(l.trim())) { const m = l.match(/use\s+(\w+)/i); if (m) { blockDb = m[1]; currentDb = m[1]; } i++; continue; }
+        if (l.startsWith('SET timestamp=') || l.startsWith('throttle:') || l.trim() === '') { i++; continue; }
+        sqlLines.push(l); i++;
+      }
+      const sql = sqlLines.join('\n').trim();
+      if (!sql || !/SELECT|INSERT|UPDATE|DELETE|CALL/i.test(sql)) continue;
+      const queryTime = queryTimeMatch ? parseFloat(queryTimeMatch[1]) : 0;
+      const isNoIndex = noIndexUsed || noGoodIndexUsed;
+      let logType = isNoIndex ? (queryTime >= 0.5 ? 'both' : 'no_index') : 'slow';
+      queries.push({
+        time: timeMatch ? timeMatch[1].trim() : '', user: userMatch ? userMatch[1] : 'unknown',
+        host: userMatch ? (userMatch[3]||'') : '', queryTime,
+        lockTime: lockTimeMatch ? parseFloat(lockTimeMatch[1]) : 0,
+        rowsSent: rowsSentMatch ? parseInt(rowsSentMatch[1]) : 0,
+        rowsExamined: rowsExaminedMatch ? parseInt(rowsExaminedMatch[1]) : 0,
+        database: blockDb, sql, noIndexUsed: isNoIndex, logType
+      });
+    }
+    onProgress && onProgress(Math.min(i/total,1), queries.length);
+    return i < total;
+  }
+  return { processChunk, getResults: () => queries };
+}
+
+// ── Analyzer ─────────────────────────────────────────────────────────────────
+function analyzeQuery(q) {
+  const sql = q.sql.toUpperCase();
+  let severity = 'info', title = '', category = '';
+  const issues = [], fixes = [], indexes = [];
+  const tableMatch = q.sql.match(/FROM\s+`?(\w+)`?/i) || q.sql.match(/UPDATE\s+`?(\w+)`?/i) || q.sql.match(/INTO\s+`?(\w+)`?/i);
+  const mainTable = tableMatch ? tableMatch[1] : 'unknown';
+  const hasMassiveIn = (q.sql.match(/,/g)||[]).length > 20 && sql.includes(' IN ');
+  const hasJoin = sql.includes('JOIN'), hasCount = sql.includes('COUNT(');
+  const isSlowJoin = hasJoin && q.queryTime > 0.005;
+  const isMissingIndex = q.rowsExamined > 100 && q.rowsSent < q.rowsExamined * 0.1;
+  const hasSelectStar = sql.includes('SELECT *');
+  if (hasMassiveIn) { title = mainTable + ' — massive IN() clause'; category = 'schema'; }
+  else if (isSlowJoin) { title = mainTable + ' — slow JOIN query'; category = 'query'; }
+  else if (hasCount && hasJoin) { title = mainTable + ' — COUNT with unnecessary JOIN'; category = 'query'; }
+  else if (isMissingIndex) { title = mainTable + ' — missing index (full scan)'; category = 'index'; }
+  else if (hasSelectStar) { title = mainTable + ' — SELECT * over-fetching'; category = 'query'; }
+  else { title = mainTable + ' — slow query'; category = 'query'; }
+  const timeMs = q.queryTime * 1000;
+  if (timeMs > 10 || q.rowsExamined > 300 || hasMassiveIn) severity = 'critical';
+  else if (timeMs > 3 || q.rowsExamined > 50 || isSlowJoin) severity = 'moderate';
+  else if (timeMs > 1 || q.rowsExamined > 10) severity = 'low';
+  if (hasMassiveIn) issues.push('Massive IN() clause — MySQL scans more rows');
+  if (isMissingIndex) issues.push('Examined ' + q.rowsExamined + ' rows, returned ' + q.rowsSent + ' — likely missing index');
+  if (hasSelectStar) issues.push('SELECT * loads all columns — wastes I/O');
+  if (isSlowJoin && !hasCount) issues.push('JOIN is slow — check indexes on FK columns');
+  if (hasCount && hasJoin) issues.push('JOIN may be unnecessary for COUNT');
+  if (q.lockTime > 0.001) issues.push('Lock time: ' + (q.lockTime*1000).toFixed(2) + 'ms — possible write contention');
+  if (!issues.length) issues.push('Query time: ' + timeMs.toFixed(2) + 'ms — exceeded threshold');
+  const cols = getWhereColumns(q.sql);
+  const joinCols = getJoinColumns(q.sql);
+  if (isMissingIndex && cols.length) { fixes.push('Add index on: ' + cols.join(', ')); indexes.push('ALTER TABLE `' + mainTable + '` ADD INDEX `idx_' + cols.join('_') + '` (' + cols.map(c=>'`'+c+'`').join(', ') + ');'); }
+  if (isSlowJoin && joinCols.length) { joinCols.forEach(({table,col}) => { fixes.push('Index FK: ' + table + '.' + col); indexes.push('ALTER TABLE `' + table + '` ADD INDEX `idx_' + col + '` (`' + col + '`);'); }); }
+  if (hasSelectStar) fixes.push('Select only the columns your code needs');
+  if (hasCount && hasJoin) { fixes.push('Remove JOIN; filter directly on the FK column'); if (cols.length) indexes.push('ALTER TABLE `' + mainTable + '` ADD INDEX `idx_' + cols.join('_') + '` (' + cols.map(c=>'`'+c+'`').join(', ') + ');'); }
+  if (hasMassiveIn) { fixes.push('Cache at application startup — data rarely changes per-request'); fixes.push('Consider JOIN to a reference table'); if (cols.length) indexes.push('ALTER TABLE `' + mainTable + '` ADD INDEX `idx_' + cols.join('_') + '` (' + cols.map(c=>'`'+c+'`').join(', ') + ');'); }
+  if (!fixes.length) { fixes.push('Review with: EXPLAIN ' + q.sql.split('\n')[0].substring(0,80)); fixes.push('Consider result caching if data is rarely updated'); }
+  const indexKey = cols.length ? mainTable + '::' + cols.join(',') : '';
+  const sqlSig = q.sql.replace(/\s+/g,' ').replace(/'[^']*'/g,"'?'").replace(/\b\d+\b/g,'?').replace(/IN\s*\([^)]+\)/gi,'IN (?)').trim().substring(0,250);
+  return { ...q, title, severity, category, issues, fixes, indexes, indexKey, mainTable, whereCols: cols, sqlSig };
+}
+function getWhereColumns(sql) {
+  const cols = [];
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+GROUP\s+BY|\s+LIMIT|\s+HAVING|$)/is);
+  if (!whereMatch) return cols;
+  const colMatches = whereMatch[1].matchAll(/`?(\w+)`?\s*(?:=|!=|<>|<=|>=|<|>|\bIS\b|\bIN\b|\bLIKE\b)/gi);
+  for (const m of colMatches) { const c = m[1].toLowerCase(); if (!['and','or','not','null','true','false','1','0'].includes(c)) cols.push(c); }
+  return [...new Set(cols)].slice(0,4);
+}
+function getJoinColumns(sql) {
+  const result = [];
+  const joinMatches = sql.matchAll(/JOIN\s+`?(\w+)`?\s+(?:\w+\s+)?ON\s+`?(\w+)`?\.`?(\w+)`?\s*=\s*`?(\w+)`?\.`?(\w+)`?/gi);
+  for (const m of joinMatches) result.push({ table: m[1], col: m[3] });
+  return result;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let activeFilters = { severity: 'all', db: 'all', logType: 'all', hf: false };
+let thresholds = { time: 0 };
+let thrDebounce;
+let currentSort = 'severity', currentPage = 1;
+const PAGE_SIZE = 25;
+let currentSearch = '', totalCount = 0;
+let currentNav = 'upload';
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function navTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+  const navEl = document.getElementById('nav-' + page);
+  if (navEl) navEl.classList.add('active');
+  currentNav = page;
+  const titles = { upload:'Upload Log File', overview:'Overview', candidates:'Index Candidates', highfreq:'High Frequency Queries', queries:'All Queries' };
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+}
+
+// ── Threshold ─────────────────────────────────────────────────────────────────
+function onThresholdInput(val) {
+  clearTimeout(thrDebounce);
+  thrDebounce = setTimeout(() => {
+    thresholds.time = parseFloat(val) || 0;
+    const active = thresholds.time > 0;
+    const badge = document.getElementById('thrActiveBadge');
+    const resetBtn = document.getElementById('thrResetBtn');
+    badge.textContent = active ? '> ' + thresholds.time + 'ms' : '';
+    badge.style.display = active ? 'inline' : 'none';
+    resetBtn.style.display = active ? 'inline-block' : 'none';
+    currentPage = 1;
+    renderIndexCandidates();
+    renderCurrentPage();
+  }, 350);
+}
+function resetThresholds() {
+  thresholds = { time: 0 };
+  document.getElementById('thr_time').value = '';
+  document.getElementById('thrActiveBadge').style.display = 'none';
+  document.getElementById('thrResetBtn').style.display = 'none';
+  currentPage = 1; renderIndexCandidates(); renderCurrentPage();
+}
+
+// ── DB helpers ────────────────────────────────────────────────────────────────
+function buildWhereClause() {
+  const conds = [], params = {};
+  if (activeFilters.severity !== 'all') {
+    if (activeFilters.severity === 'duplicate') conds.push('is_duplicate = 1');
+    else { conds.push('severity = $sev'); params.$sev = activeFilters.severity; }
+  }
+  if (activeFilters.db !== 'all') { conds.push('database_name = $db'); params.$db = activeFilters.db; }
+  if (activeFilters.logType !== 'all') { conds.push('log_type = $logType'); params.$logType = activeFilters.logType; }
+  if (activeFilters.hf) conds.push("sql_sig IN (SELECT sql_sig FROM queries WHERE log_type IN ('no_index','both') GROUP BY sql_sig HAVING COUNT(*) >= 2)");
+  if (thresholds.time > 0) { conds.push('query_time >= $ttime'); params.$ttime = thresholds.time / 1000; }
+  if (currentSearch.trim()) { conds.push('sql_text LIKE $search'); params.$search = '%' + currentSearch.trim() + '%'; }
+  return { where: conds.length ? 'WHERE ' + conds.join(' AND ') : '', params };
+}
+function getOrderBy() {
+  if (currentSort === 'time') return 'query_time DESC';
+  if (currentSort === 'rows') return 'rows_examined DESC';
+  return "CASE severity WHEN 'critical' THEN 0 WHEN 'moderate' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, query_time DESC";
+}
+function queryDB(limit, offset) {
+  const { where, params } = buildWhereClause();
+  const countRes = db.exec('SELECT COUNT(*) FROM queries ' + where, params);
+  const count = countRes[0] ? countRes[0].values[0][0] : 0;
+  const rows = db.exec('SELECT * FROM queries ' + where + ' ORDER BY ' + getOrderBy() + ' LIMIT ' + limit + ' OFFSET ' + offset, params);
+  return { count, rows: rows[0] ? rows[0] : null };
+}
+function rowsToObjects(result) {
+  if (!result) return [];
+  return result.values.map(row => { const obj = {}; result.columns.forEach((c,i) => obj[c] = row[i]); return obj; });
+}
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function setProgress(pct, label, stats) {
+  document.getElementById('progressBar').style.width = (pct * 100) + '%';
+  if (label) document.getElementById('loadingLabel').textContent = label;
+  if (stats !== undefined) document.getElementById('progressStats').textContent = stats;
+}
+
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+async function runPipeline(text) {
+  document.getElementById('uploadSection').style.display = 'none';
+  const loading = document.getElementById('loading');
+  loading.classList.add('show');
+  setProgress(0, 'Initializing SQLite...', '');
+  await initSQLite();
+  setProgress(0.05, 'SQLite ready. Parsing log...', '');
+  createDB();
+  const { processChunk, getResults } = parseSlowLogChunked(text, (pct, count) => {
+    setProgress(0.05 + pct * 0.55, 'Parsing log...', count + ' queries found · ' + Math.round(pct*100) + '% of file');
+  });
+  await new Promise(resolve => { function step() { const more = processChunk(); if (more) setTimeout(step, 0); else resolve(); } setTimeout(step, 0); });
+  const parsed = getResults();
+  if (!parsed.length) {
+    loading.classList.remove('show');
+    document.getElementById('uploadSection').style.display = 'block';
+    document.getElementById('pasteInput').placeholder = 'No queries found. Make sure this is a valid MySQL slow query log.';
+    return;
+  }
+  setProgress(0.6, 'Analyzing patterns...', parsed.length + ' queries to analyze');
+  await new Promise(r => setTimeout(r, 0));
+  const sqlMap = {};
+  for (const q of parsed) { const k = q.sql.trim().replace(/\s+/g,' ').substring(0,200); sqlMap[k] = (sqlMap[k]||0)+1; }
+  const analyzed = parsed.map(q => { const r = analyzeQuery(q); const k = q.sql.trim().replace(/\s+/g,' ').substring(0,200); r.isDuplicate = sqlMap[k] > 1; r.duplicateCount = sqlMap[k]; return r; });
+  setProgress(0.7, 'Indexing into SQLite...', '');
+  await new Promise(r => setTimeout(r, 0));
+  const BATCH = 200;
+  for (let b = 0; b < analyzed.length; b += BATCH) {
+    const chunk = analyzed.slice(b, b + BATCH);
+    db.run('BEGIN TRANSACTION');
+    const stmt = db.prepare('INSERT INTO queries (ts,user,host,query_time,lock_time,rows_sent,rows_examined,database_name,sql_text,severity,category,title,issues,fixes,indexes,is_duplicate,duplicate_count,index_key,main_table,where_cols,log_type,no_index_used,sql_sig) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    for (const q of chunk) {
+      stmt.run([q.time,q.user,q.host,q.queryTime,q.lockTime,q.rowsSent,q.rowsExamined,q.database||'',q.sql,q.severity,q.category,q.title,JSON.stringify(q.issues),JSON.stringify(q.fixes),JSON.stringify(q.indexes),q.isDuplicate?1:0,q.duplicateCount,q.indexKey||'',q.mainTable||'',JSON.stringify(q.whereCols||[]),q.logType||'slow',q.noIndexUsed?1:0,q.sqlSig||'']);
+    }
+    stmt.free(); db.run('COMMIT');
+    setProgress(0.7 + 0.2*(b/analyzed.length), 'Indexing...', Math.min(b+BATCH, analyzed.length) + ' / ' + analyzed.length);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  setProgress(0.95, 'Building dashboard...', '');
+  await new Promise(r => setTimeout(r, 0));
+  loading.classList.remove('show');
+  showDashboard(analyzed);
+}
+
+// ── Show Dashboard ────────────────────────────────────────────────────────────
+function showDashboard(analyzed) {
+  // Show nav items
+  ['overview','candidates','highfreq','queries','report','csv','reset'].forEach(id => {
+    const el = document.getElementById('nav-' + id); if (el) el.style.display = '';
+  });
+  document.getElementById('topbarActions').style.display = 'flex';
+  document.getElementById('topbarBadge').textContent = analyzed.length.toLocaleString() + ' queries loaded';
+  document.getElementById('topbarBadge').className = 'topbar-badge';
+  // Update nav badges
+  const r = db.exec("SELECT COUNT(*) FROM queries WHERE severity='critical'");
+  const crit = r[0] ? r[0].values[0][0] : 0;
+  const hfr = db.exec("SELECT COUNT(*) FROM queries WHERE log_type IN ('no_index','both')");
+  const hfCount = hfr[0] ? hfr[0].values[0][0] : 0;
+  document.getElementById('nav-total-badge').textContent = analyzed.length.toLocaleString();
+  document.getElementById('nav-crit-badge').textContent = crit > 0 ? crit.toLocaleString() : '';
+  document.getElementById('nav-crit-badge').style.display = crit > 0 ? '' : 'none';
+  document.getElementById('nav-hf-badge').textContent = hfCount > 0 ? hfCount.toLocaleString() : '';
+  document.getElementById('nav-hf-badge').style.display = hfCount > 0 ? '' : 'none';
+  // Render all sections
+  renderStats();
+  renderChart();
+  renderSeverityBreakdown();
+  renderDBSummary();
+  renderBreakdownBar();
+  renderIndexCandidates();
+  renderHighFrequency();
+  renderFilters(analyzed);
+  renderCurrentPage();
+  navTo('overview');
+}
+
+// ── Render Stats ──────────────────────────────────────────────────────────────
+function renderStats() {
+  const r = db.exec("SELECT COUNT(*) as total, SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END) as critical, SUM(CASE WHEN severity='moderate' THEN 1 ELSE 0 END) as moderate, SUM(CASE WHEN is_duplicate=1 THEN 1 ELSE 0 END) as dups, SUM(CASE WHEN log_type='no_index' THEN 1 ELSE 0 END) as noidx, SUM(CASE WHEN log_type='both' THEN 1 ELSE 0 END) as both_types FROM queries")[0].values[0];
+  const [total, critical, moderate, dups, noidx, both_types] = r;
+  const noIdxTotal = (noidx||0) + (both_types||0);
+  document.getElementById('statsGrid').innerHTML =
+    statCard('🚨', 'Critical Queries', critical, 'red', 'Queries exceeding 10ms or scanning >300 rows. Fix these first.', critical > 0 ? critical + ' need attention' : 'None found') +
+    statCard('⚠️', 'Moderate Issues', moderate, 'amber', 'Queries between 3–10ms or with slow JOINs.', 'Fix after critical') +
+    statCard('📊', 'Total Queries', total, 'blue', 'Total slow query log entries parsed from your log file.', 'In this log file') +
+    statCard('🔁', 'Duplicate Patterns', dups, 'green', 'Same SQL ran multiple times. Good caching candidates.', noIdxTotal > 0 ? noIdxTotal + ' no-index entries' : 'No duplicates');
+}
+
+function statCard(icon, label, val, color, tip, sub) {
+  return '<div class="stat-card">' +
+    '<div class="stat-card-top"><span class="stat-icon">' + icon + '</span>' +
+    '<span class="stat-trend neutral" data-tip="' + tip + '">?</span></div>' +
+    '<div class="stat-val ' + color + '">' + (val||0).toLocaleString() + '</div>' +
+    '<div class="stat-label">' + label + '</div>' +
+    '<div class="stat-sub">' + sub + '</div>' +
+    '</div>';
+}
+
+// ── Breakdown bar ─────────────────────────────────────────────────────────────
+function renderBreakdownBar() {
+  const r = db.exec("SELECT SUM(CASE WHEN log_type='slow' THEN 1 ELSE 0 END), SUM(CASE WHEN log_type='no_index' THEN 1 ELSE 0 END), SUM(CASE WHEN log_type='both' THEN 1 ELSE 0 END), COUNT(*) FROM queries")[0].values[0];
+  const [slowOnly, noIdxOnly, bothTypes, total] = r;
+  const noIdxTotal = (noIdxOnly||0) + (bothTypes||0);
+  const slowTotal  = (slowOnly||0)  + (bothTypes||0);
+  if (noIdxTotal === 0) { document.getElementById('breakdownSection').innerHTML = ''; return; }
+  const pNoIdx = total > 0 ? (noIdxTotal/total*100).toFixed(1) : 0;
+  const pSlow  = total > 0 ? (slowTotal/total*100).toFixed(1) : 0;
+  document.getElementById('breakdownSection').innerHTML =
+    '<div class="breakdown-bar mb-20">' +
+    '<div class="breakdown-legend">' +
+    '<div class="breakdown-item"><div class="breakdown-dot" style="background:var(--orange)"></div><strong>' + noIdxTotal.toLocaleString() + '</strong> no index used (logged by log_queries_not_using_indexes)</div>' +
+    '<div class="breakdown-item"><div class="breakdown-dot" style="background:var(--purple)"></div><strong>' + slowTotal.toLocaleString() + '</strong> exceeded long_query_time threshold</div>' +
+    (bothTypes > 0 ? '<div class="breakdown-item"><div class="breakdown-dot" style="background:var(--red)"></div><strong>' + bothTypes.toLocaleString() + '</strong> both slow AND no index</div>' : '') +
+    '</div>' +
+    '<div class="breakdown-track">' +
+    '<div class="breakdown-seg" style="width:' + pNoIdx + '%;background:var(--orange)"></div>' +
+    '<div class="breakdown-seg" style="width:' + Math.max(0, pSlow - pNoIdx) + '%;background:var(--purple)"></div>' +
+    '</div></div>';
+}
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+function renderChart() {
+  const r = db.exec('SELECT sql_text, query_time, severity FROM queries ORDER BY query_time DESC LIMIT 10');
+  if (!r[0]) return;
+  const rows = r[0].values;
+  const maxMs = rows[0][1] * 1000;
+  const colors = { critical:'var(--red)', moderate:'var(--amber)', low:'var(--green)', info:'var(--blue)' };
+  let html = '';
+  for (const [sql, qt, sev] of rows) {
+    const ms = (qt*1000).toFixed(2);
+    const pct = maxMs > 0 ? (qt*1000/maxMs*100).toFixed(1) : 0;
+    const label = sql.trim().split('\n')[0].replace(/\s+/g,' ').substring(0,32) + '...';
+    html += '<div class="chart-bar-row"><div class="chart-bar-label" title="' + escHtml(sql) + '">' + escHtml(label) + '</div><div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct + '%;background:' + (colors[sev]||'var(--blue)') + '"></div></div><div class="chart-bar-val">' + ms + 'ms</div></div>';
+  }
+  document.getElementById('barChart').innerHTML = html || '<div class="text-faint text-sm">No data</div>';
+}
+
+// ── Severity breakdown ────────────────────────────────────────────────────────
+function renderSeverityBreakdown() {
+  const r = db.exec("SELECT severity, COUNT(*) FROM queries GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'moderate' THEN 1 WHEN 'low' THEN 2 ELSE 3 END");
+  if (!r[0]) return;
+  const total = r[0].values.reduce((s, row) => s + row[1], 0);
+  const colors = { critical:'var(--red)', moderate:'var(--amber)', low:'var(--green)', info:'var(--blue)' };
+  const labels = { critical:'Critical', moderate:'Moderate', low:'Low', info:'Info' };
+  let html = '';
+  for (const [sev, cnt] of r[0].values) {
+    const pct = total > 0 ? (cnt/total*100).toFixed(1) : 0;
+    html += '<div class="chart-bar-row"><div class="chart-bar-label">' + (labels[sev]||sev) + '</div><div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct + '%;background:' + (colors[sev]||'var(--blue)') + '"></div></div><div class="chart-bar-val">' + cnt.toLocaleString() + ' <span class="text-faint">(' + pct + '%)</span></div></div>';
+  }
+  document.getElementById('severityBreakdown').innerHTML = html || '<div class="text-faint text-sm">No data</div>';
+}
+
+// ── DB Summary ────────────────────────────────────────────────────────────────
+function renderDBSummary() {
+  const r = db.exec("SELECT database_name, COUNT(*) as cnt, SUM(query_time) as total_time, SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END) as crit FROM queries WHERE database_name != '' GROUP BY database_name ORDER BY cnt DESC");
+  if (!r[0] || !r[0].values.length) { document.getElementById('dbSummary').innerHTML = '<div class="text-faint text-sm">No database information found in log.</div>'; return; }
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+  html += '<thead><tr style="border-bottom:2px solid var(--border);text-align:left">' +
+    '<th style="padding:8px 12px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase">Database</th>' +
+    '<th style="padding:8px 12px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase">Queries</th>' +
+    '<th style="padding:8px 12px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase">Total Slow Time</th>' +
+    '<th style="padding:8px 12px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase">Critical</th>' +
+    '<th style="padding:8px 12px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase">Action</th>' +
+    '</tr></thead><tbody>';
+  for (const [dbName, cnt, totalTime, crit] of r[0].values) {
+    html += '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:10px 12px;font-family:\'Courier New\',monospace;font-weight:600">' + escHtml(dbName) + '</td>' +
+      '<td style="padding:10px 12px">' + cnt.toLocaleString() + '</td>' +
+      '<td style="padding:10px 12px">' + totalTime.toFixed(1) + 's</td>' +
+      '<td style="padding:10px 12px"><span class="sev-badge critical">' + (crit||0) + '</span></td>' +
+      '<td style="padding:10px 12px"><button class="btn" style="font-size:11px;padding:4px 10px" onclick="filterByDB(\'' + sqlEsc(dbName) + '\')">Filter this DB</button></td>' +
+      '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('dbSummary').innerHTML = html;
+}
+
+function filterByDB(dbName) {
+  activeFilters.db = dbName;
+  navTo('queries');
+  renderFilters([]);
+  renderCurrentPage();
+}
+
+// ── Index Candidates ──────────────────────────────────────────────────────────
+function renderIndexCandidates() {
+  if (!db) return;
+  const thrWhere = thresholds.time > 0 ? 'AND query_time >= ' + (thresholds.time/1000) : '';
+  const dbClause = activeFilters.db !== 'all' ? "AND database_name = '" + sqlEsc(activeFilters.db) + "'" : '';
+  const res = db.exec("SELECT sql_sig, MIN(sql_text) AS sample_sql, MIN(main_table) AS tbl, MIN(where_cols) AS where_cols, MIN(database_name) AS db_name, COUNT(*) AS hit_count, AVG(query_time) AS avg_time, MAX(query_time) AS max_time, SUM(query_time) AS total_time, AVG(rows_examined) AS avg_rows, SUM(CASE WHEN log_type IN ('no_index','both') THEN 1 ELSE 0 END) AS no_idx_count, SUM(CASE WHEN log_type IN ('slow','both') THEN 1 ELSE 0 END) AS slow_count FROM queries WHERE sql_sig != '' " + dbClause + ' ' + thrWhere + " GROUP BY sql_sig HAVING hit_count >= 1 LIMIT 200");
+  const section = document.getElementById('icSection');
+  if (!res[0] || !res[0].values.length) { section.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No index candidates found</div><div class="empty-sub">Try lowering the time threshold or removing filters.</div></div>'; return; }
+  const groups = rowsToObjects(res[0]);
+  const maxWaste = Math.max(...groups.map(g => g.hit_count * g.avg_time));
+  const maxMaxTime = Math.max(...groups.map(g => g.max_time));
+  const maxHits = Math.max(...groups.map(g => g.hit_count));
+  const maxRows = Math.max(...groups.map(g => g.avg_rows));
+  const norm = (v, max) => max > 0 ? v/max : 0;
+  const scored = groups.map(g => {
+    const s1 = norm(g.hit_count*g.avg_time, maxWaste)*0.40;
+    const s2 = norm(g.max_time, maxMaxTime)*0.25;
+    const s3 = norm(g.hit_count, maxHits)*0.20;
+    const s4 = norm(g.avg_rows, maxRows)*0.15;
+    return { ...g, score: s1+s2+s3+s4, impactMs: g.hit_count*g.avg_time*1000, s1,s2,s3,s4 };
+  }).sort((a,b) => b.score-a.score).slice(0,30);
+  const maxScore = scored[0]?.score || 1;
+  const totalWaste = scored.reduce((s,g) => s+g.impactMs, 0);
+  const totalHits  = scored.reduce((s,g) => s+g.hit_count, 0);
+  const p1count = scored.filter(g => g.score >= 0.55).length;
+  const sampleMap = {};
+  for (const g of scored.slice(0,15)) {
+    const sr = db.exec('SELECT DISTINCT sql_text FROM queries WHERE sql_sig = ? LIMIT 3', [g.sql_sig]);
+    sampleMap[g.sql_sig] = sr[0] ? sr[0].values.map(r => r[0]) : [];
+  }
+  function buildAlter(g) {
+    const cols = safeJSON(g.where_cols, []);
+    if (!cols.length || !g.tbl) return '';
+    return 'ALTER TABLE `' + g.tbl + '` ADD INDEX `idx_' + cols.join('_') + '` (' + cols.map(c=>'`'+c+'`').join(', ') + ');';
+  }
+  function prio(g) { return g.score >= 0.55 ? 1 : g.score >= 0.25 ? 2 : 3; }
+  const allAlters = scored.map(buildAlter).filter(Boolean).join('\n');
+  document.getElementById('icSummaryRow').innerHTML =
+    icSumChip(scored.length, 'patterns found', 'blue', 'Unique SQL patterns grouped by normalized signature.') +
+    icSumChip(totalHits.toLocaleString(), 'total executions', 'amber', 'Total times these patterns ran in the log window.') +
+    icSumChip((totalWaste/1000).toFixed(1)+'s', 'total waste', 'red', 'Cumulative DB time spent on patterns without proper indexes.') +
+    icSumChip(p1count, 'urgent (P1)', 'purple', 'Patterns with the highest composite impact score.');
+  let html = '<div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary" onclick="copyAllIC()" id="copyAllICBtn" data-tip="Copy all ALTER TABLE statements for MySQL">📋 Copy all ALTER TABLE</button></div>';
+  scored.forEach((g, idx) => {
+    const p = prio(g);
+    const alter = buildAlter(g);
+    const cols = safeJSON(g.where_cols, []);
+    const avgMs = (g.avg_time*1000).toFixed(1), maxMs = (g.max_time*1000).toFixed(1);
+    const wasteSec = (g.impactMs/1000).toFixed(1);
+    const scorePct = (g.score/maxScore*100).toFixed(0);
+    const pLabel = 'P' + p;
+    const barColor = p===1?'var(--red)':p===2?'var(--amber)':'var(--blue)';
+    const cardId = 'ic_' + idx;
+    const samples = sampleMap[g.sql_sig] || [];
+    const tblHtml = g.tbl ? '<span class="ic-table">`' + escHtml(g.tbl) + '`</span>' : '';
+    const colsHtml = cols.length ? '<span style="color:var(--text3);font-size:12px">on</span><span class="ic-cols">' + cols.map(c=>'`'+escHtml(c)+'`').join(', ') + '</span>' : '';
+    const dbHtml = g.db_name ? '<span class="ic-db">' + escHtml(g.db_name) + '</span>' : '';
+    const copyBtnHtml = alter ? '<button class="btn-copy" onclick="copyIC(event,\'' + cardId + '_alter\')" data-tip="Copy ALTER TABLE SQL to clipboard">Copy SQL</button>' : '';
+    const alterHtml = alter ? '<div class="ic-alter" id="' + cardId + '_alter">' + escHtml(alter) + '</div>' : '';
+    const samplesHtml = samples.length ? '<div class="ic-sample-lbl">Sample queries from the log</div>' + samples.map(s => '<div class="ic-sample">' + escHtml(s.trim().substring(0,400)) + (s.length>400?'...':'') + '</div>').join('') : '';
+    const tags = [];
+    if (g.no_idx_count > 0) tags.push('<span class="ic-tag freq" data-tip="' + g.no_idx_count.toLocaleString() + ' runs had no index — full table scans.">No index (' + g.no_idx_count.toLocaleString() + 'x)</span>');
+    if (g.hit_count >= 50) tags.push('<span class="ic-tag freq" data-tip="Ran ' + g.hit_count.toLocaleString() + ' times — frequency multiplies inefficiency.">High frequency</span>');
+    if (g.avg_rows > 100) tags.push('<span class="ic-tag scan" data-tip="Avg ' + Math.round(g.avg_rows).toLocaleString() + ' rows scanned per run — an index reduces this to 1-5.">Large scan</span>');
+    if (g.slow_count > 0) tags.push('<span class="ic-tag slow" data-tip="' + g.slow_count.toLocaleString() + ' runs exceeded long_query_time.">Slow (' + g.slow_count.toLocaleString() + 'x)</span>');
+    const why = buildWhyText(g, cols, wasteSec, avgMs);
+    html += '<div class="ic-card p' + p + ' fade-in" style="animation-delay:' + idx*0.03 + 's">'
+      + '<div class="ic-top" onclick="toggleIC(\'' + cardId + '\')">'
+        + '<span class="ic-prio p' + p + '" data-tip="Priority ' + pLabel + ': ' + (p===1?'Fix immediately.':p===2?'Fix soon.':'Fix when time allows.') + '">' + pLabel + '</span>'
+        + '<div class="ic-main">'
+          + '<div class="ic-title-row">' + tblHtml + colsHtml + dbHtml + '</div>'
+          + '<div class="ic-tags">' + tags.join('') + '</div>'
+          + '<div class="ic-stats">'
+            + '<span class="ic-s" data-tip="Total waste = runs x avg time. Primary ranking signal (40%).">Waste: <b class="' + (g.impactMs>30000?'danger':'warn') + '">' + wasteSec + 's</b></span>'
+            + '<span class="ic-s" data-tip="Slowest single run (25% of score).">Slowest: <b>' + maxMs + 'ms</b></span>'
+            + '<span class="ic-s" data-tip="Execution count (20% of score).">Runs: <b>' + g.hit_count.toLocaleString() + '</b></span>'
+            + '<span class="ic-s" data-tip="Avg rows scanned per run (15% of score).">Rows scanned: <b>' + Math.round(g.avg_rows).toLocaleString() + '</b></span>'
+            + '<span class="ic-s" data-tip="Composite score from all 4 signals.">Score: <b>' + scorePct + '%</b></span>'
+          + '</div>'
+        + '</div>'
+        + '<div class="ic-actions">' + copyBtnHtml + '<span class="toggle-chevron">›</span></div>'
+      + '</div>'
+      + '<div class="ic-body" id="' + cardId + '">'
+        + alterHtml
+        + '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Scoring breakdown</div>'
+        + '<div class="ic-score-bars">'
+          + sigBar(g.s1, 'Total waste (40%)', 'Cumulative DB time. Highest weight.', barColor)
+          + sigBar(g.s2, 'Slowest run (25%)', 'Single worst execution time.', barColor)
+          + sigBar(g.s3, 'Hit count (20%)', 'Execution frequency.', barColor)
+          + sigBar(g.s4, 'Rows scanned (15%)', 'Avg rows per execution.', barColor)
+        + '</div>'
+        + '<div class="ic-why">' + why + '</div>'
+        + samplesHtml
+      + '</div>'
+    + '</div>';
+  });
+  section.innerHTML = html;
+  window._allICAlters = allAlters;
+}
+
+function icSumChip(val, label, color, tip) {
+  const bg = {blue:'var(--brand-light)',amber:'var(--amber-light)',red:'var(--red-light)',green:'var(--green-light)',purple:'var(--purple-light)'}[color]||'var(--surface)';
+  const fg = {blue:'var(--brand)',amber:'var(--amber)',red:'var(--red)',green:'var(--green)',purple:'var(--purple)'}[color]||'var(--text)';
+  return '<div class="ic-sum-chip" style="border-color:' + fg + '33;background:' + bg + '" data-tip="' + tip + '"><div class="v" style="color:' + fg + '">' + val + '</div><div class="l">' + label + '</div></div>';
+}
+function buildWhyText(g, cols, wasteSec, avgMs) {
+  const parts = [];
+  if (g.no_idx_count > 0) parts.push('This pattern ran <strong>' + g.no_idx_count.toLocaleString() + ' times without an index</strong>, forcing MySQL to scan avg <strong>' + Math.round(g.avg_rows).toLocaleString() + ' rows</strong> per execution.');
+  if (g.hit_count >= 50) parts.push('It appeared <strong>' + g.hit_count.toLocaleString() + ' times</strong> in your log — high frequency multiplies any inefficiency.');
+  if (g.slow_count > 0) parts.push('<strong>' + g.slow_count.toLocaleString() + ' runs</strong> exceeded your long_query_time threshold at avg <strong>' + avgMs + 'ms</strong>.');
+  const idxPhrase = cols.length > 1 ? 'a composite index on (' + cols.map(c=>'`'+c+'`').join(', ') + ')' : cols.length===1 ? 'an index on `' + cols[0] + '`' : 'an index';
+  parts.push('Total cumulative waste: <strong>' + wasteSec + 's</strong>. Adding ' + idxPhrase + ' would reduce each run to a sub-millisecond lookup.');
+  return parts.join(' ');
+}
+function toggleIC(id) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  const chevron = body.previousElementSibling.querySelector('.toggle-chevron');
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+function copyIC(e, id) {
+  e.stopPropagation();
+  const el = document.getElementById(id);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    const btn = e.target; const orig = btn.textContent;
+    btn.textContent = '✓ Copied'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  });
+}
+function copyAllIC() {
+  const sql = window._allICAlters || '';
+  if (!sql) return;
+  navigator.clipboard.writeText(sql).then(() => {
+    const btn = document.getElementById('copyAllICBtn');
+    if (!btn) return;
+    const orig = btn.textContent; btn.textContent = '✓ All copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2500);
+  });
+}
+
+// ── High Frequency ────────────────────────────────────────────────────────────
+function renderHighFrequency() {
+  if (!db) return;
+  const res = db.exec("SELECT sql_sig, MIN(sql_text) AS sample_sql, COUNT(*) AS hit_count, SUM(query_time) AS total_time, AVG(query_time) AS avg_time, MAX(query_time) AS max_time, MIN(database_name) AS db_name, MIN(main_table) AS tbl FROM queries WHERE log_type IN ('no_index','both') AND sql_sig != '' GROUP BY sql_sig HAVING COUNT(*) >= 1 ORDER BY hit_count * avg_time DESC LIMIT 20");
+  const section = document.getElementById('hfSection');
+  if (!res[0] || !res[0].values.length) { section.innerHTML = '<div class="empty-state"><div class="empty-icon">⚡</div><div class="empty-title">No high-frequency patterns found</div><div class="empty-sub">No queries logged due to missing indexes, or log_queries_not_using_indexes is not enabled.</div></div>'; return; }
+  const groups = rowsToObjects(res[0]);
+  const maxImpact = Math.max(...groups.map(g => g.hit_count * g.avg_time * 1000));
+  const totalCumMs = groups.reduce((s,g) => s + g.hit_count*g.avg_time*1000, 0);
+  const totalHits  = groups.reduce((s,g) => s + g.hit_count, 0);
+  const critCount  = groups.filter(g => g.hit_count*g.avg_time*1000 > 10000).length;
+  document.getElementById('hfSummaryRow').innerHTML =
+    icSumChip(groups.length, 'unique patterns', 'blue', 'Distinct query patterns without proper indexes.') +
+    icSumChip(totalHits.toLocaleString(), 'total executions', 'amber', 'Total times these unindexed queries ran.') +
+    icSumChip((totalCumMs/1000).toFixed(1)+'s', 'total waste', 'red', 'Combined DB time wasted on full table scans.') +
+    icSumChip(critCount, 'critical impact (>10s)', 'red', 'Patterns wasting more than 10 seconds total.');
+  let html = '';
+  groups.forEach((g, idx) => {
+    const impactMs = g.hit_count * g.avg_time * 1000;
+    const impactSec = (impactMs/1000).toFixed(1);
+    const avgMs = (g.avg_time*1000).toFixed(1);
+    const maxMs = (g.max_time*1000).toFixed(1);
+    const pct = maxImpact > 0 ? (impactMs/maxImpact*100).toFixed(1) : 0;
+    let tier = '🟢 Low', tierColor = 'var(--green)';
+    if (impactMs > 60000) { tier = '🔴 Critical'; tierColor = 'var(--red)'; }
+    else if (impactMs > 10000) { tier = '🟡 High'; tierColor = 'var(--amber)'; }
+    else if (impactMs > 2000) { tier = '🟠 Medium'; tierColor = 'var(--orange)'; }
+    const cardId = 'hf_' + idx;
+    const sqlPreview = (g.sample_sql||'').trim().replace(/\s+/g,' ').substring(0,90);
+    html += '<div class="hf-card fade-in" style="animation-delay:' + idx*0.03 + 's">'
+      + '<div class="hf-top" onclick="toggleHfCard(\'' + cardId + '\')">'
+        + '<div class="hf-rank">#' + (idx+1) + '</div>'
+        + '<div class="hf-main">'
+          + '<div class="hf-title" title="' + escHtml(g.sample_sql||'') + '">' + (g.tbl ? '<strong style="color:var(--green);font-family:\'Courier New\',monospace">`' + escHtml(g.tbl) + '`</strong> · ' : '') + escHtml(sqlPreview) + (sqlPreview.length>=90?'...':'') + '</div>'
+          + '<div class="hf-stats">'
+            + '<span class="hf-s" data-tip="Times this pattern executed in the log window.">Executions: <b class="hot">' + g.hit_count.toLocaleString() + '</b></span>'
+            + '<span class="hf-s" data-tip="Average time per execution.">Avg time: <b>' + avgMs + 'ms</b></span>'
+            + '<span class="hf-s" data-tip="Cumulative waste = executions x avg time.">Total waste: <b class="' + (impactMs>10000?'danger':'hot') + '">' + impactSec + 's</b></span>'
+            + '<span class="hf-s" style="color:' + tierColor + ';font-weight:600" data-tip="Impact tier based on cumulative waste.">' + tier + '</span>'
+          + '</div>'
+          + '<div class="hf-impact-row"><div class="hf-impact-lbl">Impact</div><div class="hf-impact-track"><div class="hf-impact-fill" style="width:' + pct + '%"></div></div><div class="hf-impact-val">' + impactSec + 's</div></div>'
+        + '</div>'
+        + '<span class="toggle-chevron">›</span>'
+      + '</div>'
+      + '<div class="hf-body" id="' + cardId + '">'
+        + '<div class="hf-why">This query ran <span class="hl">' + g.hit_count.toLocaleString() + ' times</span> without an index, accumulating <span class="hl">' + impactSec + 's</span> of cumulative DB time. Each execution forces a full table scan instead of an index lookup.</div>'
+        + '<div class="body-label" style="margin-bottom:8px">SQL Query</div>'
+        + '<div class="sql-block">' + highlightSQL(g.sample_sql||'') + '</div>'
+      + '</div>'
+    + '</div>';
+  });
+  section.innerHTML = html;
+}
+function toggleHfCard(id) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  const chevron = body.previousElementSibling.querySelector('.toggle-chevron');
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function renderFilters(analyzed) {
+  activeFilters = { severity:'all', db:'all', logType:'all', hf:false };
+  currentPage = 1;
+  const sevRes = db.exec("SELECT severity, COUNT(*) FROM queries GROUP BY severity");
+  const sevCounts = {};
+  if (sevRes[0]) for (const [s,n] of sevRes[0].values) sevCounts[s] = n;
+  const total = db.exec('SELECT COUNT(*) FROM queries')[0].values[0][0];
+  const dups = db.exec('SELECT COUNT(*) FROM queries WHERE is_duplicate=1')[0].values[0][0];
+  const ltRes = db.exec("SELECT log_type, COUNT(*) FROM queries GROUP BY log_type");
+  const ltCounts = {};
+  if (ltRes[0]) for (const [lt,n] of ltRes[0].values) ltCounts[lt] = n;
+  const dbs = db.exec("SELECT DISTINCT database_name FROM queries WHERE database_name != '' ORDER BY database_name");
+  const dbList = dbs[0] ? dbs[0].values.map(r=>r[0]) : [];
+  // Severity row
+  let sevHtml = '<span class="filter-label">Severity</span>';
+  sevHtml += '<button class="filter-chip active" onclick="setFilter(\'severity\',\'all\',this)" data-group="severity">All (' + total + ')</button>';
+  if (sevCounts.critical) sevHtml += '<button class="filter-chip" onclick="setFilter(\'severity\',\'critical\',this)" data-group="severity">🔴 Critical (' + sevCounts.critical + ')</button>';
+  if (sevCounts.moderate) sevHtml += '<button class="filter-chip" onclick="setFilter(\'severity\',\'moderate\',this)" data-group="severity">🟡 Moderate (' + sevCounts.moderate + ')</button>';
+  if (sevCounts.low)      sevHtml += '<button class="filter-chip" onclick="setFilter(\'severity\',\'low\',this)" data-group="severity">🟢 Low (' + sevCounts.low + ')</button>';
+  if (dups > 0)           sevHtml += '<button class="filter-chip" onclick="setFilter(\'severity\',\'duplicate\',this)" data-group="severity">🔁 Duplicates (' + dups + ')</button>';
+  document.getElementById('severityFilters').innerHTML = sevHtml;
+  // Log type row
+  const hasNoIdx = (ltCounts['no_index']||0) + (ltCounts['both']||0) > 0;
+  const hasSlow = (ltCounts['slow']||0) + (ltCounts['both']||0) > 0;
+  if (hasNoIdx && hasSlow) {
+    let ltHtml = '<span class="filter-label">Log reason</span>';
+    ltHtml += '<button class="filter-chip active" onclick="setFilter(\'logType\',\'all\',this)" data-group="logType">All</button>';
+    if (ltCounts['slow'])     ltHtml += '<button class="filter-chip" onclick="setFilter(\'logType\',\'slow\',this)" data-group="logType">🟣 Slow query (' + ltCounts['slow'] + ')</button>';
+    if (ltCounts['no_index']) ltHtml += '<button class="filter-chip" onclick="setFilter(\'logType\',\'no_index\',this)" data-group="logType">🟠 No index (' + ltCounts['no_index'] + ')</button>';
+    if (ltCounts['both'])     ltHtml += '<button class="filter-chip" onclick="setFilter(\'logType\',\'both\',this)" data-group="logType">🔴 Both (' + ltCounts['both'] + ')</button>';
+    const hfHits = db.exec("SELECT COUNT(*) FROM queries WHERE sql_sig IN (SELECT sql_sig FROM queries WHERE log_type IN ('no_index','both') GROUP BY sql_sig HAVING COUNT(*) >= 2)")[0].values[0][0];
+    if (hfHits > 0) ltHtml += '<button class="filter-chip" onclick="setFilterHF(this)" data-group="logType">⚡ High Frequency (' + hfHits.toLocaleString() + ')</button>';
+    document.getElementById('logTypeFilters').innerHTML = ltHtml;
+    document.getElementById('logTypeFilters').style.display = 'flex';
+  }
+  // DB row
+  if (dbList.length > 1) {
+    let dbHtml = '<span class="filter-label">Database</span>';
+    dbHtml += '<button class="filter-chip active-db active" onclick="setFilter(\'db\',\'all\',this)" data-group="db">All DBs</button>';
+    dbList.forEach(d => {
+      const cnt = db.exec("SELECT COUNT(*) FROM queries WHERE database_name='" + sqlEsc(d) + "'")[0].values[0][0];
+      dbHtml += '<button class="filter-chip" onclick="setFilter(\'db\',\'' + sqlEsc(d) + '\',this)" data-group="db">🗄️ ' + escHtml(d) + ' (' + cnt + ')</button>';
+    });
+    document.getElementById('dbFilters').innerHTML = dbHtml;
+    document.getElementById('dbFilters').style.display = 'flex';
+  }
+}
+
+function setFilter(type, value, btn) {
+  if (type === 'logType') activeFilters.hf = false;
+  activeFilters[type] = value;
+  currentPage = 1;
+  document.querySelectorAll('.filter-chip[data-group="' + type + '"]').forEach(t => t.classList.remove('active','active-red','active-amber','active-green','active-orange','active-db'));
+  const activeClass = type === 'db' ? 'active-db' : value === 'critical' ? 'active-red' : value === 'moderate' ? 'active-amber' : value === 'low' ? 'active-green' : 'active';
+  btn.classList.add(activeClass);
+  renderCurrentPage();
+}
+function setFilterHF(btn) {
+  activeFilters.hf = true; activeFilters.logType = 'all'; currentPage = 1;
+  document.querySelectorAll('.filter-chip[data-group="logType"]').forEach(t => t.classList.remove('active','active-red','active-amber','active-green','active-orange'));
+  btn.classList.add('active-orange');
+  renderCurrentPage();
+}
+function resetFilters() {
+  activeFilters = { severity:'all', db:'all', logType:'all', hf:false }; currentPage = 1;
+  document.querySelectorAll('.filter-chip').forEach(t => { t.classList.remove('active','active-red','active-amber','active-green','active-orange','active-db'); if (t.textContent.startsWith('All')) t.classList.add('active'); });
+  renderCurrentPage();
+}
+
+// ── Query List ────────────────────────────────────────────────────────────────
+function renderCurrentPage() {
+  const { count, rows } = queryDB(PAGE_SIZE, (currentPage-1)*PAGE_SIZE);
+  totalCount = count;
+  const queries = rowsToObjects(rows);
+  let html = '';
+  for (let idx = 0; idx < queries.length; idx++) {
+    const q = queries[idx];
+    const ms = (q.query_time*1000).toFixed(2);
+    const sevLabel = q.severity.charAt(0).toUpperCase() + q.severity.slice(1);
+    const dupNote = q.is_duplicate ? '<span class="meta-chip" data-tip="This exact SQL appeared ' + q.duplicate_count + ' times — good caching candidate.">🔁 Runs ' + q.duplicate_count + 'x</span>' : '';
+    const dbNote = q.database_name ? '<span class="meta-chip">🗄️ ' + escHtml(q.database_name) + '</span>' : '';
+    const timeClass = q.severity === 'critical' ? 'red' : q.severity === 'moderate' ? 'amber' : '';
+    const logType = q.log_type || 'slow';
+    const logBadge = logType === 'no_index' ? '<span class="log-type-badge no_index" data-tip="Logged by log_queries_not_using_indexes. Runs without an index.">🟠 No index</span>'
+      : logType === 'both' ? '<span class="log-type-badge both" data-tip="Slow AND no index — highest priority.">🔴 Slow + No index</span>'
+      : '<span class="log-type-badge slow" data-tip="Exceeded your long_query_time threshold.">🟣 Slow query</span>';
+    const issues = safeJSON(q.issues, []);
+    const fixes = safeJSON(q.fixes, []);
+    const indexList = safeJSON(q.indexes, []);
+    html += '<div class="query-card ' + q.severity + ' fade-in" style="animation-delay:' + idx*0.025 + 's">'
+      + '<div class="card-top" onclick="toggleCard(this)">'
+        + '<div class="card-top-left">'
+          + '<div class="card-title">' + escHtml(q.title) + '</div>'
+          + '<div class="card-meta">'
+            + '<span class="meta-chip ' + timeClass + '" data-tip="How long this query took. Your threshold: 0.5s.">⏱ ' + ms + 'ms</span>'
+            + '<span class="meta-chip" data-tip="Rows MySQL scanned to answer this query. High = missing index.">' + q.rows_examined.toLocaleString() + ' rows examined</span>'
+            + '<span class="meta-chip" data-tip="Rows actually returned to application.">' + q.rows_sent + ' returned</span>'
+            + logBadge + dbNote + dupNote
+          + '</div>'
+        + '</div>'
+        + '<span class="sev-badge ' + q.severity + '">' + sevLabel + '</span>'
+        + '<span class="toggle-chevron">›</span>'
+      + '</div>'
+      + '<div class="card-body-expand">'
+        + '<div class="body-section"><div class="body-label">SQL Query</div><div class="sql-block">' + highlightSQL(q.sql_text) + '</div></div>'
+        + '<div class="body-section"><div class="body-label">Issues</div>' + issues.map(i => '<div style="font-size:13px;color:var(--text2);padding:3px 0">⚠️ ' + escHtml(i) + '</div>').join('') + '</div>'
+        + '<div class="body-section"><div class="body-label">Fixes</div><div class="fix-list">' + fixes.map(f => '<div class="fix-item">' + escHtml(f) + '</div>').join('') + '</div></div>'
+        + (indexList.length ? '<div class="body-section"><div class="body-label">Recommended Index</div><div class="alter-block">' + indexList.map(escHtml).join('\n') + '</div></div>' : '')
+        + '<div class="body-section"><div style="display:flex;gap:24px;flex-wrap:wrap">'
+          + (q.ts ? '<div><div class="body-label" style="margin-bottom:2px">Time</div><div style="font-family:\'Courier New\',monospace;font-size:12px;color:var(--text2)">' + escHtml(q.ts) + '</div></div>' : '')
+          + '<div><div class="body-label" style="margin-bottom:2px">User</div><div style="font-family:\'Courier New\',monospace;font-size:12px;color:var(--text2)">' + escHtml(q.user) + '</div></div>'
+          + '<div><div class="body-label" style="margin-bottom:2px">Lock time</div><div style="font-family:\'Courier New\',monospace;font-size:12px;color:var(--text2)" data-tip="Time waiting for table/row locks. High = write contention.">' + (q.lock_time*1000).toFixed(3) + 'ms</div></div>'
+        + '</div></div>'
+      + '</div>'
+    + '</div>';
+  }
+  if (!html) html = '<div class="empty-state"><div class="empty-icon">🔎</div><div class="empty-title">No queries match</div><div class="empty-sub">Try adjusting the filters or threshold.</div><button class="btn btn-primary" onclick="resetFilters()" style="margin-top:12px">Clear filters</button></div>';
+  document.getElementById('queryCards').innerHTML = html;
+  renderPagination();
+}
+
+function toggleCard(el) {
+  const body = el.nextElementSibling;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  const chevron = el.querySelector('.toggle-chevron');
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+function renderPagination() {
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  if (totalPages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+  let html = '<button class="page-btn" onclick="goPage(' + (currentPage-1) + ')" ' + (currentPage===1?'disabled':'') + '>← Prev</button>';
+  const pages = getPaginationRange(currentPage, totalPages);
+  for (const p of pages) {
+    if (p === '...') html += '<span class="page-info">…</span>';
+    else html += '<button class="page-btn ' + (p===currentPage?'active':'') + '" onclick="goPage(' + p + ')">' + p + '</button>';
+  }
+  html += '<button class="page-btn" onclick="goPage(' + (currentPage+1) + ')" ' + (currentPage===totalPages?'disabled':'') + '>Next →</button>';
+  html += '<span class="page-info">' + totalCount.toLocaleString() + ' results</span>';
+  document.getElementById('pagination').innerHTML = html;
+}
+function getPaginationRange(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  if (cur <= 4) return [1,2,3,4,5,'...',total];
+  if (cur >= total-3) return [1,'...',total-4,total-3,total-2,total-1,total];
+  return [1,'...',cur-1,cur,cur+1,'...',total];
+}
+function goPage(p) {
+  const total = Math.ceil(totalCount/PAGE_SIZE);
+  if (p < 1 || p > total) return;
+  currentPage = p;
+  renderCurrentPage();
+  document.getElementById('queryCards').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function setSort(sort, btn) {
+  currentSort = sort; currentPage = 1;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCurrentPage();
+}
+let searchTimeout;
+function onSearch(val) {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => { currentSearch = val; currentPage = 1; renderCurrentPage(); }, 300);
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!db) return;
+  const where = reportWhereClause();
+  const res = db.exec('SELECT id,severity,title,query_time,rows_examined,rows_sent,database_name,user,ts,log_type,sql_text FROM queries ' + where + ' ORDER BY query_time DESC');
+  if (!res[0]) return;
+  const csv = [res[0].columns.join(','), ...res[0].values.map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(','))].join('\n');
+  downloadBlob(csv, 'text/csv', 'slow-queries-' + datestamp() + '.csv');
+}
+
+// ── Report Modal ──────────────────────────────────────────────────────────────
+let reportType = 'devops';
+let reportIncludes = { summary:true, indexes:true, hf:true, queries:true, sql:false };
+let reportDb = 'all', reportSeverity = 'all', reportLogType = 'all', reportHF = false;
+
+function openReportModal() {
+  if (!db) return;
+  const dbRes = db.exec("SELECT DISTINCT database_name FROM queries WHERE database_name != '' ORDER BY database_name");
+  const dbs = dbRes[0] ? dbRes[0].values.map(r=>r[0]) : [];
+  const dbContainer = document.getElementById('reportDbFilter');
+  if (dbs.length <= 1) {
+    reportDb = dbs.length===1?dbs[0]:'all';
+    dbContainer.innerHTML = '<span style="font-size:12px;color:var(--text3)">' + (dbs.length===1?dbs[0]:'All databases') + '</span>';
+  } else {
+    reportDb = 'all';
+    dbContainer.innerHTML = '<label class="toggle-pill on" onclick="selectReportFilter(\'db\',\'all\',this)"><span class="dot"></span>All databases</label>' +
+      dbs.map(d => { const cnt = db.exec("SELECT COUNT(*) FROM queries WHERE database_name='" + sqlEsc(d) + "'")[0].values[0][0]; return '<label class="toggle-pill" onclick="selectReportFilter(\'db\',\'' + sqlEsc(d) + '\',this)"><span class="dot"></span>' + escHtml(d) + ' (' + cnt + ')</label>'; }).join('');
+  }
+  const total = db.exec('SELECT COUNT(*) FROM queries')[0].values[0][0];
+  const sevRes = db.exec("SELECT severity, COUNT(*) FROM queries GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'moderate' THEN 1 WHEN 'low' THEN 2 ELSE 3 END");
+  const sevCounts = {};
+  if (sevRes[0]) for (const [s,n] of sevRes[0].values) sevCounts[s] = n;
+  reportSeverity = 'all';
+  document.getElementById('reportSevFilter').innerHTML =
+    '<label class="toggle-pill on" onclick="selectReportFilter(\'severity\',\'all\',this)"><span class="dot"></span>All (' + total + ')</label>' +
+    [['critical','🔴 Critical'],['moderate','🟡 Moderate'],['low','🟢 Low'],['info','🔵 Info']].filter(([k]) => sevCounts[k]).map(([k,label]) => '<label class="toggle-pill" onclick="selectReportFilter(\'severity\',\'' + k + '\',this)"><span class="dot"></span>' + label + ' (' + sevCounts[k] + ')</label>').join('');
+  const ltRes = db.exec("SELECT log_type, COUNT(*) FROM queries GROUP BY log_type");
+  const ltCounts = {};
+  if (ltRes[0]) for (const [lt,n] of ltRes[0].values) ltCounts[lt] = n;
+  reportLogType = 'all';
+  if (Object.keys(ltCounts).length > 1) {
+    document.getElementById('reportLogTypeGroup').style.display = '';
+    document.getElementById('reportLogTypeFilter').innerHTML =
+      '<label class="toggle-pill on" onclick="selectReportFilter(\'logType\',\'all\',this)"><span class="dot"></span>All (' + total + ')</label>' +
+      [['slow','🟣 Slow'],['no_index','🟠 No index'],['both','🔴 Both']].filter(([k]) => ltCounts[k]).map(([k,label]) => '<label class="toggle-pill" onclick="selectReportFilter(\'logType\',\'' + k + '\',this)"><span class="dot"></span>' + label + ' (' + ltCounts[k] + ')</label>').join('');
+  } else { document.getElementById('reportLogTypeGroup').style.display = 'none'; }
+  const hfPat = db.exec("SELECT COUNT(DISTINCT sql_sig) FROM (SELECT sql_sig FROM queries WHERE log_type IN ('no_index','both') AND sql_sig != '' GROUP BY sql_sig HAVING COUNT(*) >= 2)")[0].values[0][0];
+  reportHF = false;
+  if (hfPat > 0) {
+    document.getElementById('reportHFGroup').style.display = '';
+    document.getElementById('reportHFFilter').innerHTML = '<label class="toggle-pill on" onclick="selectReportHF(false,this)"><span class="dot"></span>All queries</label><label class="toggle-pill" onclick="selectReportHF(true,this)"><span class="dot"></span>⚡ High Frequency only (' + hfPat + ' patterns)</label>';
+  } else { document.getElementById('reportHFGroup').style.display = 'none'; }
+  reportIncludes = { summary:true, indexes:true, hf:true, queries:true, sql:false };
+  document.querySelectorAll('#reportIncludes .toggle-pill').forEach(el => { const k = el.dataset.key; el.classList.toggle('on', !!reportIncludes[k]); el.querySelector('.dot').style.background = reportIncludes[k] ? 'var(--brand)' : 'var(--border2)'; });
+  updateReportMatchCount();
+  document.getElementById('reportModal').classList.add('open');
+}
+function closeReportModal() { document.getElementById('reportModal').classList.remove('open'); }
+function selectReportType(type) {
+  reportType = type;
+  ['devops','full','csv'].forEach(t => document.getElementById('opt-'+t).classList.toggle('selected', t===type));
+  const isCsv = type==='csv';
+  document.getElementById('reportIncludes').style.opacity = isCsv?'.4':'1';
+  document.getElementById('reportIncludes').style.pointerEvents = isCsv?'none':'';
+  updateReportMatchCount();
+}
+function selectReportFilter(type, val, el) {
+  if (type==='db') reportDb=val; else if (type==='severity') reportSeverity=val; else if (type==='logType') reportLogType=val;
+  el.closest('.toggle-pills').querySelectorAll('.toggle-pill').forEach(t => { t.classList.remove('on'); t.querySelector('.dot').style.background='var(--border2)'; });
+  el.classList.add('on'); el.querySelector('.dot').style.background='var(--brand)';
+  updateReportMatchCount();
+}
+function selectReportHF(val, el) {
+  reportHF = val;
+  el.closest('.toggle-pills').querySelectorAll('.toggle-pill').forEach(t => { t.classList.remove('on'); t.querySelector('.dot').style.background='var(--border2)'; });
+  el.classList.add('on'); el.querySelector('.dot').style.background='var(--brand)';
+  updateReportMatchCount();
+}
+function toggleInclude(el, key) {
+  reportIncludes[key] = !reportIncludes[key];
+  el.classList.toggle('on', reportIncludes[key]);
+  el.querySelector('.dot').style.background = reportIncludes[key] ? 'var(--brand)' : 'var(--border2)';
+}
+function updateReportMatchCount() {
+  if (!db) return;
+  const n = db.exec('SELECT COUNT(*) FROM queries ' + reportWhereClause())[0].values[0][0];
+  const el = document.getElementById('reportMatchCount');
+  if (el) el.textContent = n.toLocaleString() + ' queries match';
+}
+function reportWhereClause() {
+  const c = [];
+  if (reportDb !== 'all')       c.push("database_name = '" + sqlEsc(reportDb) + "'");
+  if (reportSeverity !== 'all') c.push("severity = '" + reportSeverity + "'");
+  if (reportLogType !== 'all')  c.push("log_type = '" + reportLogType + "'");
+  if (reportHF)                 c.push("sql_sig IN (SELECT sql_sig FROM queries WHERE log_type IN ('no_index','both') GROUP BY sql_sig HAVING COUNT(*) >= 2)");
+  return c.length ? 'WHERE ' + c.join(' AND ') : '';
+}
+function reportFilterLabel() {
+  const p = [];
+  if (reportDb !== 'all')       p.push('DB: ' + reportDb);
+  if (reportSeverity !== 'all') p.push('Severity: ' + reportSeverity);
+  if (reportLogType !== 'all')  p.push('Log: ' + reportLogType.replace('_',' '));
+  if (reportHF)                 p.push('High Frequency only');
+  return p.length ? p.join(' · ') : 'All queries';
+}
+function generateAndDownloadReport() {
+  if (reportType==='csv') { exportCSV(); closeReportModal(); return; }
+  const html = reportType==='devops' ? buildDevOpsReport() : buildFullReport();
+  const label = reportFilterLabel().replace(/[^a-z0-9]/gi,'-').toLowerCase();
+  downloadBlob(html, 'text/html', 'slowquery-' + reportType + '-' + label + '-' + datestamp() + '.html');
+  closeReportModal();
+}
+function openReportInTab() {
+  if (reportType==='csv') { exportCSV(); closeReportModal(); return; }
+  const html = reportType==='devops' ? buildDevOpsReport() : buildFullReport();
+  window.open(URL.createObjectURL(new Blob([html],{type:'text/html'})), '_blank');
+  closeReportModal();
+}
+function datestamp() { return new Date().toISOString().slice(0,10); }
+function downloadBlob(content, type, filename) {
+  const url = URL.createObjectURL(new Blob([content],{type}));
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+}
+
+// ── Report builders ───────────────────────────────────────────────────────────
+function esc(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function buildDevOpsReport() {
+  const where = reportWhereClause();
+  const andWhere = where ? where.replace(/^WHERE /,'AND ') : '';
+  const grpRes = db.exec("SELECT index_key, main_table, where_cols, COUNT(*) AS hit_count, SUM(query_time) AS total_time, MAX(query_time) AS max_time, SUM(rows_examined) AS total_rows, database_name FROM queries WHERE index_key != '' " + andWhere + " GROUP BY index_key ORDER BY hit_count DESC, total_time DESC");
+  const groups = grpRes[0] ? rowsToObjects(grpRes[0]) : [];
+  const mRes = db.exec('SELECT COUNT(*), SUM(CASE WHEN severity=\'critical\' THEN 1 ELSE 0 END), SUM(query_time) FROM queries ' + where)[0].values[0];
+  const [totalQ, critQ, totalTime] = mRes;
+  const maxHits = groups.length ? Math.max(...groups.map(g=>g.hit_count)) : 1;
+  function prio(g) { const r = g.hit_count/maxHits; return r>=0.4||g.hit_count>=1000?1:r>=0.15||g.hit_count>=100?2:3; }
+  function buildAlter(g) { const cols=safeJSON(g.where_cols,[]); if(!cols.length) return ''; return 'ALTER TABLE `'+g.main_table+'` ADD INDEX `idx_'+cols.join('_')+'` ('+cols.map(c=>'`'+c+'`').join(', ')+');'; }
+  function isCachable(g) { return g.total_rows/g.hit_count<100&&g.hit_count>500; }
+  const allAlters = groups.map(buildAlter).filter(Boolean).join('\n');
+  const sampleMap = {};
+  for (const g of groups) { const sr = db.exec('SELECT DISTINCT sql_text FROM queries WHERE index_key = ? LIMIT 3',[g.index_key]); sampleMap[g.index_key] = sr[0]?sr[0].values.map(r=>r[0]):[]; }
+  const filterLabel = reportFilterLabel();
+  const now = new Date().toLocaleString();
+  let idxCards = '';
+  for (const g of groups) {
+    const p = prio(g); const cols = safeJSON(g.where_cols,[]); const alter = buildAlter(g);
+    const avgMs = ((g.total_time/g.hit_count)*1000).toFixed(1); const wasteSec = g.total_time.toFixed(2);
+    const pLabel = p===1?'P1 — Critical':p===2?'P2 — Important':'P3 — Minor';
+    const pColor = p===1?'#dc2626':p===2?'#d97706':'#0284c7';
+    const cache = isCachable(g);
+    const samples = (reportIncludes.sql && sampleMap[g.index_key]) || [];
+    idxCards += '<div style="border:1px solid #e2e8f0;border-left:4px solid '+pColor+';border-radius:8px;margin-bottom:14px;overflow:hidden">' +
+      '<div style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+          '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;border:1px solid '+pColor+';color:'+pColor+';background:'+pColor+'18">'+esc(pLabel)+'</span>' +
+          (cache?'<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#fffbeb;color:#d97706;border:1px solid #fde68a">Cache candidate</span>':'') +
+          (g.database_name?'<span style="font-size:10px;color:#94a3b8">'+esc(g.database_name)+'</span>':'') +
+        '</div>' +
+        '<div style="font-family:monospace;font-size:15px;font-weight:700;margin-bottom:8px">' +
+          '<span style="color:#16a34a">`'+esc(g.main_table)+'`</span>' +
+          (cols.length?'<span style="color:#94a3b8;font-size:12px"> on </span><span style="color:#2563eb">'+cols.map(c=>'`'+esc(c)+'`').join(', ')+'</span>':'') +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:16px;font-family:monospace;font-size:12px">' +
+          '<span><strong>'+g.hit_count.toLocaleString()+'</strong> hits</span>' +
+          '<span><strong>'+wasteSec+'s</strong> total slow time</span>' +
+          '<span><strong>'+avgMs+'ms</strong> avg</span>' +
+          '<span><strong>'+g.total_rows.toLocaleString()+'</strong> rows scanned</span>' +
+        '</div>' +
+      '</div>' +
+      (alter?'<div style="padding:12px 18px;background:#1e293b"><pre style="margin:0;font-family:monospace;font-size:13px;color:#7dd3fc;white-space:pre-wrap">'+esc(alter)+'</pre></div>':'') +
+      (cache?'<div style="padding:8px 18px;background:#fffbeb;font-size:12px;color:#92400e">💡 Cache tip: High hit count, low row count — consider Redis or app-level caching.</div>':'') +
+      (samples.length?'<div style="padding:12px 18px;border-top:1px solid #e2e8f0">'+samples.map(s=>'<pre style="background:#f1f5f9;border-radius:4px;padding:8px;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;margin-bottom:4px;color:#334155;border-left:3px solid #cbd5e1">'+esc(s.trim().substring(0,400))+'</pre>').join('')+'</div>':'') +
+    '</div>';
+  }
+  const sumSection = reportIncludes.summary ? '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">'+rStatBox('Total Queries',totalQ,'#2563eb')+rStatBox('Critical',critQ,'#dc2626')+rStatBox('Index Fixes',groups.length,'#16a34a')+rStatBox('Total Slow Time',totalTime.toFixed(1)+'s','#d97706')+'</div>' : '';
+  const idxSection = reportIncludes.indexes ? '<div style="margin-bottom:28px"><h2 style="font-size:16px;font-weight:700;margin-bottom:4px">Index Recommendations</h2><p style="font-size:12px;color:#64748b;margin-bottom:14px">'+groups.length+' patterns · '+groups.filter(g=>prio(g)===1).length+' P1 critical</p><div style="background:#1e293b;border-radius:8px;padding:14px 18px;margin-bottom:16px"><pre style="margin:0;font-family:monospace;font-size:12px;color:#7dd3fc;white-space:pre-wrap;line-height:1.9">'+esc(allAlters)+'</pre></div>'+idxCards+'</div>' : '';
+  return reportShell('SlowQuery — DevOps Indexing Report', now, filterLabel, sumSection+idxSection);
+}
+
+function buildFullReport() {
+  const where = reportWhereClause();
+  const mRes = db.exec("SELECT COUNT(*), SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END), SUM(CASE WHEN severity='moderate' THEN 1 ELSE 0 END), SUM(CASE WHEN is_duplicate=1 THEN 1 ELSE 0 END) FROM queries " + where)[0].values[0];
+  const [totalQ, critQ, modQ, dupQ] = mRes;
+  const now = new Date().toLocaleString();
+  const filterLabel = reportFilterLabel();
+  const sumSection = reportIncludes.summary ? '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">'+rStatBox('Total',totalQ,'#2563eb')+rStatBox('Critical',critQ,'#dc2626')+rStatBox('Moderate',modQ,'#d97706')+rStatBox('Duplicates',dupQ,'#16a34a')+'</div>' : '';
+  let qRows = '';
+  if (reportIncludes.queries) {
+    const qRes = db.exec("SELECT severity,title,query_time,rows_examined,rows_sent,database_name,user,sql_text,is_duplicate,duplicate_count,log_type FROM queries " + where + " ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'moderate' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, query_time DESC LIMIT 200");
+    if (qRes[0]) {
+      const sevColor = {critical:'#dc2626',moderate:'#d97706',low:'#16a34a',info:'#0284c7'};
+      const ltLabel = {slow:'Slow',no_index:'No index',both:'Both'};
+      for (const q of rowsToObjects(qRes[0])) {
+        const ms=(q.query_time*1000).toFixed(2), c=sevColor[q.severity]||'#0284c7', lt=q.log_type||'slow';
+        const sqlRow = reportIncludes.sql ? '<tr><td colspan="7" style="padding:0 12px 8px;font-family:monospace;font-size:11px;color:#64748b;white-space:pre-wrap;word-break:break-all;background:#f8fafc">'+esc(q.sql_text.substring(0,500))+'</td></tr>' : '';
+        qRows += '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:10px 12px"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid '+c+';color:'+c+';background:'+c+'18">'+q.severity+'</span></td><td style="padding:10px 12px;font-size:13px;font-weight:600">'+esc(q.title)+(q.is_duplicate?'<span style="font-size:10px;background:#fffbeb;color:#d97706;padding:2px 6px;border-radius:10px;border:1px solid #fde68a;margin-left:6px">x'+q.duplicate_count+'</span>':'')+'</td><td style="padding:10px 12px;font-family:monospace;font-size:12px">'+ms+'ms</td><td style="padding:10px 12px;font-family:monospace;font-size:12px">'+q.rows_examined.toLocaleString()+'</td><td style="padding:10px 12px;font-size:11px">'+esc(ltLabel[lt]||lt)+'</td><td style="padding:10px 12px;font-family:monospace;font-size:12px;color:#64748b">'+esc(q.database_name||'')+'</td><td style="padding:10px 12px;font-family:monospace;font-size:11px;color:#94a3b8">'+esc(q.user||'')+'</td></tr>'+sqlRow;
+      }
+    }
+  }
+  const qSection = reportIncludes.queries && qRows ? '<div style="margin-bottom:28px"><h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Query List '+(totalQ>200?'<span style="font-size:12px;color:#94a3b8;font-weight:400">(top 200 of '+totalQ.toLocaleString()+')</span>':'')+'</h2><div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px"><table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">'+'<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">Severity</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">Title</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">Time</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">Rows Examined</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">Log Reason</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">DB</th><th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;letter-spacing:.05em">User</th></tr></thead><tbody>'+qRows+'</tbody></table></div></div>' : '';
+  return reportShell('SlowQuery — Full Analysis Report', now, filterLabel, sumSection+qSection);
+}
+
+function rStatBox(label, val, color) {
+  return '<div style="border:1px solid #e2e8f0;border-top:3px solid '+color+';border-radius:8px;padding:16px 18px;background:#f8fafc"><div style="font-size:26px;font-weight:800;color:'+color+'">'+val+'</div><div style="font-size:11px;color:#64748b;margin-top:4px">'+label+'</div></div>';
+}
+
+function reportShell(title, now, filterLabel, body) {
+  const isFiltered = filterLabel && filterLabel !== 'All queries';
+  const badges = isFiltered ? filterLabel.split(' · ').map(p => '<span style="font-size:10px;padding:2px 9px;border-radius:10px;background:#eff6ff;color:#2563eb;border:1px solid #dbeafe">'+esc(p)+'</span>').join(' ') : '';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a}.page{max-width:920px;margin:0 auto;padding:2rem 1.5rem 4rem}@media print{body{background:white}.page{max-width:100%;padding:1rem}.no-print{display:none!important}tr{page-break-inside:avoid}}</style></head><body><div class="page">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #e2e8f0;flex-wrap:wrap;gap:12px">' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<div style="width:36px;height:36px;border-radius:8px;background:#2563eb;display:flex;align-items:center;justify-content:center;font-size:18px;color:white">🔍</div>' +
+          '<div><div style="font-size:20px;font-weight:800">SlowQuery Analyzer</div><div style="font-size:11px;color:#94a3b8;font-family:monospace">'+esc(title.replace('SlowQuery — ',''))+'</div></div>' +
+        '</div>' +
+        (badges ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+badges+'</div>' : '') +
+      '</div>' +
+      '<div style="text-align:right">' +
+        '<div style="font-size:12px;color:#94a3b8">Generated: '+esc(now)+'</div>' +
+        '<button class="no-print" onclick="window.print()" style="margin-top:8px;padding:7px 18px;border-radius:6px;background:#2563eb;color:white;border:none;font-weight:700;font-size:13px;cursor:pointer;font-family:Arial,sans-serif">🖨 Print / Save PDF</button>' +
+      '</div>' +
+    '</div>' +
+    body +
+    '<div style="margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#cbd5e1;text-align:center">Generated by <a href="https://helithasri.dev" target="_blank" style="color:#2563eb;text-decoration:none">SlowQuery Analyzer</a> · Built by <a href="https://helithasri.dev" target="_blank" style="color:#2563eb;text-decoration:none">Helitha Sri</a> · '+esc(now)+'</div>' +
+  '</div></body></html>';
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+function resetApp() {
+  if (db) { db.close(); db = null; }
+  navTo('upload');
+  document.getElementById('uploadSection').style.display = 'block';
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('pasteInput').value = '';
+  document.getElementById('topbarActions').style.display = 'none';
+  document.getElementById('topbarBadge').textContent = 'No file loaded';
+  document.getElementById('topbarBadge').className = 'topbar-badge offline';
+  ['overview','candidates','highfreq','queries','report','csv','reset'].forEach(id => {
+    const el = document.getElementById('nav-' + id); if (el) el.style.display = 'none';
+  });
+  document.getElementById('nav-upload').style.display = '';
+  thresholds = { time:0 }; currentSearch = ''; currentPage = 1;
+}
+
+// ── Entry points ──────────────────────────────────────────────────────────────
+function analyzeFromPaste() {
+  const text = document.getElementById('pasteInput').value.trim();
+  if (!text) { document.getElementById('pasteInput').style.borderColor='var(--red)'; setTimeout(()=>document.getElementById('pasteInput').style.borderColor='',1500); return; }
+  runPipeline(text);
+}
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return; readAndAnalyze(file);
+});
+
+function readAndAnalyze(file) {
+  document.getElementById('uploadSection').style.display = 'none';
+  document.getElementById('loading').classList.add('show');
+  setProgress(0, 'Reading ' + file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)...', '');
+  const reader = new FileReader();
+  reader.onprogress = e => { if (e.lengthComputable) setProgress(e.loaded/e.total*0.1, 'Reading file...', (e.loaded/1024/1024).toFixed(1) + ' MB'); };
+  reader.onload = ev => { setProgress(0.12,'File loaded. Parsing...',''); runPipeline(ev.target.result); };
+  reader.onerror = () => { document.getElementById('loading').classList.remove('show'); document.getElementById('uploadSection').style.display='block'; alert('Error reading file.'); };
+  reader.readAsText(file);
+}
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0]; if (file) readAndAnalyze(file);
+});
+</script>
+</body>
+</html>
